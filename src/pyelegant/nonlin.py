@@ -14,7 +14,7 @@ import matplotlib.patches as patches
 import matplotlib.pylab as plt
 import numpy as np
 import scipy.constants as PHYSCONST
-from scipy.integrate import romberg
+from scipy.integrate import quad as quad_integrate
 from scipy.interpolate import PchipInterpolator
 from scipy.optimize import fmin
 
@@ -2564,22 +2564,22 @@ def generate_Touschek_F_interpolator():
     xarray = np.logspace(-3, 2, ndiv)
     Farray = np.full(xarray.shape, np.nan)
     for _i, x in enumerate(xarray):
-        func = (
-            lambda u, x=x: (1.0 / u - np.log(1.0 / u) / 2.0 - 1.0) * np.exp(-x / u)
-            if u > 0.0
-            else 0.0
-        )
-        Farray[_i] = romberg(
+
+        def func(u, x):
+            return np.where(
+                u > 0, (1.0 / u - np.log(1.0 / u) / 2.0 - 1.0) * np.exp(-x / u), 0.0
+            )
+
+        Farray[_i], error = quad_integrate(
             func,
             0.0,
             1.0,
-            args=(),
-            tol=1e-16,  # tol=1e-10,
-            rtol=1e-10,
-            show=False,
-            divmax=20,
-            vec_func=False,
+            args=(x,),
+            epsabs=1e-16,
+            epsrel=1e-10,
+            limit=20,  # Max subdivisions
         )
+
     xasymp_array = np.logspace(-3, -2, 11)
     #
     plt.figure()
