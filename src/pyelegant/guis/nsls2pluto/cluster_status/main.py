@@ -354,7 +354,7 @@ class ClusterStatusWindow(QtWidgets.QMainWindow):
         out, err = p.communicate()
 
         parsed = {}
-        for k, v in re.findall("([\w\d]+)=([^\s]+)", out):
+        for k, v in re.findall(r"([\w\d]+)=([^\s]+)", out):
             if k == "PartitionName":
                 d = parsed[v] = {}
             else:
@@ -696,10 +696,8 @@ class ClusterStatusWindow(QtWidgets.QMainWindow):
         p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding="utf-8")
         out, err = p.communicate()
 
-        parsed = re.findall(
-            "NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
-            out,
-        )
+        pattern = r"NodeName=([\w\d\-]+).*?CPUAlloc=(\d+).*?CPUTot=(\d+).*?CPULoad=([\d\.N/A]+)"
+        parsed = re.findall(pattern, out, re.DOTALL)
 
         for d in group_summary:
             _nAlloc = _nTot = _nSuspendable = _cpu_load = 0
