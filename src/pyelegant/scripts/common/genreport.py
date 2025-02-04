@@ -412,8 +412,8 @@ class Report_NSLS2U_Default:
         # To allow LaTeX to be able to find PDF files in the report folder
         #
         doc.preamble.append(plx.Package("chngcntr"))
-        doc.append(plx.NoEscape("\counterwithin{figure}{section}"))
-        doc.append(plx.NoEscape("\counterwithin{table}{section}"))
+        doc.append(plx.NoEscape(r"\counterwithin{figure}{section}"))
+        doc.append(plx.NoEscape(r"\counterwithin{table}{section}"))
 
         doc.preamble.append(
             plx.Command("title", "ELEGANT Lattice Characterization Report")
@@ -4222,6 +4222,10 @@ class Report_NSLS2U_Default:
                 d[k]["E2"],
                 d[k]["K1"],
             )
+
+            if angle == 0.0:  # Actually not a bend, so skip
+                continue
+
             rho = L / angle  # bending radius [m]
             B = Brho / rho  # [T]
 
