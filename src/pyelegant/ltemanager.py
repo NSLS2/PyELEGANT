@@ -229,7 +229,10 @@ class Lattice:
             self._LTE_suppl_files_folderpath = temp_d["suppl_files_folderpath"]
 
         if elem_files_root_folderpath is None:
-            self.elem_files_root_folder = LTE_filepath.parent
+            # Relative file paths specified in the LTE file are interpreted by
+            # ELEGANT as being relative to the current working directory (i.e.,
+            # neither the location of the LTE file nor that of the ELE file).
+            self.elem_files_root_folder = Path.cwd()
         else:
             self.elem_files_root_folder = Path(elem_files_root_folderpath)
 
