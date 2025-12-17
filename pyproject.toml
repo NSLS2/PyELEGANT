@@ -12,7 +12,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<4.0"
 numpy = "^2.3.2"
 scipy = "^1.16.1"
 matplotlib = "^3.10"
@@ -32,6 +32,7 @@ h5py = "^3.14.0"
 mpi4py = { version = "^4.1.0", optional = true } # must be installed by pip, not conda
 dill = { version = "^0.4.0", optional = true }
 QtPy = { version = "^2.4.3", optional = true }
+PyQt5 = { version = "^5.15.10", optional = true }
 jupyter = { version = "^1.1.1", optional = true }
 ipympl = { version = "^0.9.7", optional = true}
 PyLaTeX = { version = "^1.4.2", optional = true }
@@ -42,7 +43,7 @@ packaging = { version = "^25.0", optional = true }
 jupy = ["jupyter", "ipympl"]
 parallel = ["mpi4py", "dill", "QtPy"]
 genreport = ["QtPy", "pylatex", "xlsxwriter", "packaging"]
-all = ["jupyter", "ipympl", "mpi4py", "dill", "QtPy", "pylatex", "xlsxwriter", "packaging"]
+all = ["jupyter", "ipympl", "mpi4py", "dill", "QtPy", "PyQt5", "pylatex", "xlsxwriter", "packaging"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.1"
