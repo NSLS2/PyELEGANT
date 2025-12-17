@@ -1950,8 +1950,8 @@ class NSLS2(AbstractFacility):
             elem_inds["QUAD"] = np.sort(
                 np.hstack(
                     [
-                        LTE.get_elem_inds_from_regex("^Q[HL]\w+$"),
-                        LTE.get_elem_inds_from_regex("^QM1\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
                     ]
                 )
             )
@@ -1960,9 +1960,9 @@ class NSLS2(AbstractFacility):
             elem_inds["QUAD"] = np.sort(
                 np.hstack(
                     [
-                        LTE.get_elem_inds_from_regex("^Q[HL]\w+$"),
-                        LTE.get_elem_inds_from_regex("^QM1\w+$"),
-                        LTE.get_elem_inds_from_regex("^Q[DF]C26\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[DF]C26\w+$"),
                     ]
                 )
             )
@@ -1970,20 +1970,20 @@ class NSLS2(AbstractFacility):
         else:
             raise NotImplementedError
 
-        elem_inds["HIQUAD"] = LTE.get_elem_inds_from_regex("^QM2\w+$")
+        elem_inds["HIQUAD"] = LTE.get_elem_inds_from_regex(r"^QM2\w+$")
         assert len(elem_inds["HIQUAD"]) == 60
 
         elem_inds["SEXT"] = np.sort(
             np.hstack(
                 [
-                    LTE.get_elem_inds_from_regex("^S[HL]\w+$"),
-                    LTE.get_elem_inds_from_regex("^SM1\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^S[HL]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^SM1\w+$"),
                 ]
             )
         )
         assert len(elem_inds["SEXT"]) == 240
 
-        elem_inds["HISEXT"] = LTE.get_elem_inds_from_regex("^SM2\w+$")
+        elem_inds["HISEXT"] = LTE.get_elem_inds_from_regex(r"^SM2\w+$")
         assert len(elem_inds["HISEXT"]) == 30
 
         return elem_inds
@@ -2245,8 +2245,8 @@ class NSLS2U(AbstractFacility):
             elem_inds["EM_QUAD"] = np.sort(
                 np.hstack(
                     [
-                        LTE.get_elem_inds_from_regex("^Q[SL]\w+$"),
-                        LTE.get_elem_inds_from_regex("^Q[DF]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[SL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[DF]\w+$"),
                     ]
                 )
             )
@@ -2257,8 +2257,8 @@ class NSLS2U(AbstractFacility):
         elem_inds["SEXT"] = np.sort(
             np.hstack(
                 [
-                    LTE.get_elem_inds_from_regex("^S[HL]\w+$"),
-                    LTE.get_elem_inds_from_regex("^S[DF]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^S[HL]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^S[DF]\w+$"),
                 ]
             )
         )
@@ -2279,7 +2279,7 @@ class NSLS2U(AbstractFacility):
         elem_inds["OCT"] = np.sort(
             np.hstack(
                 [
-                    LTE.get_elem_inds_from_regex("^OCT\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^OCT\w+$"),
                 ]
             )
         )

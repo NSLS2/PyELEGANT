@@ -181,7 +181,7 @@ def _get_slurm_partition_info():
     out, err = p.communicate()
 
     parsed = {}
-    for k, v in re.findall("([\w\d]+)=([^\s]+)", out):
+    for k, v in re.findall(r"([\w\d]+)=([^\s]+)", out):
         if k == "PartitionName":
             d = parsed[v] = {}
         else:
@@ -444,7 +444,7 @@ def _get_unexpected_prefix(nodes_str):
 
 def _sinfo_parsing(parsed, partition, state, nodes_str, _unexpected_node_prefixes):
 
-    nodes_tuple = tuple(re.findall("[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
+    nodes_tuple = tuple(re.findall(r"[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
 
     nMaxNodeIndex = 100
     avail_prefixes = ["gpu", "hpc"] + _unexpected_node_prefixes
@@ -488,7 +488,7 @@ def get_n_free_cores(partition="normal"):
     out, err = p.communicate()
 
     parsed = {}
-    for k, v in re.findall("([\w\d]+)=([^\s]+)", out):
+    for k, v in re.findall(r"([\w\d]+)=([^\s]+)", out):
         if k == "PartitionName":
             d = parsed[v] = {}
         else:
@@ -531,7 +531,7 @@ def get_n_free_cores(partition="normal"):
     out, err = p.communicate()
 
     parsed = re.findall(
-        "NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
+        r"NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
         out,
     )
 
