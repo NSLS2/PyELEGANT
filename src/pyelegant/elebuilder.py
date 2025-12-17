@@ -2978,7 +2978,7 @@ class EleDesigner:
                     fitpoints = [
                         int(s)
                         for s in re.findall(
-                            "FITPOINT\s*=\s*(\d+)", prop_str, re.IGNORECASE
+                            r"FITPOINT\s*=\s*(\d+)", prop_str, re.IGNORECASE
                         )
                     ]
                     if len(fitpoints) == 0:

@@ -557,7 +557,7 @@ def _plot_cmap(
         v1unitconv, v2unitconv = 1e3, 1e3
         v1lim, v2lim = xlim, ylim
     else:
-        v1name, v2name = "\delta", "x"
+        v1name, v2name = r"\delta", "x"
         v1unitsymb, v2unitsymb = r"\%", r"\mathrm{mm}"
         v1unitconv, v2unitconv = 1e2, 1e3
         v1lim, v2lim = deltalim, xlim
@@ -1223,7 +1223,7 @@ def _plot_fma(
         v1unitconv, v2unitconv = 1e3, 1e3
         v1lim, v2lim = xlim, ylim
     else:
-        v1name, v2name = "\delta", "x"
+        v1name, v2name = r"\delta", "x"
         v1unitsymb, v2unitsymb = r"\%", r"\mathrm{mm}"
         v1unitconv, v2unitconv = 1e2, 1e3
         v1lim, v2lim = deltalim, xlim

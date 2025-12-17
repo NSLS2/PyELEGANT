@@ -1535,9 +1535,9 @@ class TbTLinOptCorrector:
         hist = self._actual_design_diff_history
 
         if history:
-            legends = ["$\mathrm{Initial}$"]
+            legends = [r"$\mathrm{Initial}$"]
             for i in range(len(hist["nux"]))[1:]:
-                legends.append(f"$\mathrm{{Iter.\, {i}}}$")
+                legends.append(rf"$\mathrm{{Iter.\, {i}}}$")
 
         plt.figure()
         plt.subplot(211)
@@ -1724,7 +1724,7 @@ class TbTLinOptCorrector:
         if history:
             legends = []
             for i in range(hist.shape[1]):
-                legends.append(f"$\mathrm{{Iter.\, {i}}}$")
+                legends.append(rf"$\mathrm{{Iter.\, {i}}}$")
 
         plt.figure()
         plt.subplot(211)
