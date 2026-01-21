@@ -872,18 +872,19 @@ class ClosedOrbitCalculatorViaTraj:
         self.make_tempdir(tempdir_path=tempdir_path)
 
     def make_tempdir(self, tempdir_path=None):
+
         if isinstance(tempdir_path, Path):
             if tempdir_path.exists():
-                self.tempdir = tempdir_path
-                return
+                pass
             else:
+                tempdir_path.mkdir(parents=True, exist_ok=True)
                 tempdir_path = str(tempdir_path)
         elif isinstance(tempdir_path, str):
             tempdir_path = Path(tempdir_path)
             if tempdir_path.exists():
-                self.tempdir = tempdir_path
-                return
+                pass
             else:
+                tempdir_path.mkdir(parents=True, exist_ok=True)
                 tempdir_path = str(tempdir_path)
 
         self.tempdir = tempfile.TemporaryDirectory(
@@ -937,7 +938,7 @@ class ClosedOrbitCalculatorViaTraj:
         # defined with non-zero DX and/or DY values, those values will be ignored.
         name = self.LTE.flat_used_elem_names[0]
         assert self.LTE.is_unique_elem_name(name)
-        watch_pathobj = self.traj_calc_ele_path.with_suffix(".wc000")
+        watch_pathobj = self.traj_calc_ele_path.with_suffix(".wc_000")
         temp_watch_elem_name = f"ELEGANT_WATCH_000"
         watch_filepath = watch_pathobj.resolve()
         temp_watch_elem_def = (
@@ -1018,7 +1019,7 @@ class ClosedOrbitCalculatorViaTraj:
             print_stderr=std_print_enabled["err"],
         )
 
-        watch_filepaths = list(self.traj_calc_ele_path.parent.glob("*.wc*"))
+        watch_filepaths = list(self.traj_calc_ele_path.parent.glob("*.wc_*"))
         assert len(watch_filepaths) == 1
 
         data, meta = sdds.sdds2dicts(watch_filepaths[0], str_format="%25.16e")
@@ -1205,7 +1206,34 @@ class ClosedOrbitCalculatorViaTraj:
             if False:
                 plt.figure()
                 plt.semilogy(sv / sv[0], ".-")
-            assert np.all(sv / sv[0] > 1e-4)
+            try:
+                assert np.all(sv / sv[0] > 1e-4)
+            except AssertionError:
+                print("Singular values: ", sv)
+                # Save debug info to reproduce the issue
+                import pickle
+
+                debug_info = {
+                    "LTE_filepath": str(self.LTE_filepath),
+                    "E_MeV": self.E_MeV,
+                    "N_KICKS": self.N_KICKS,
+                    "load_parameters": self.load_parameters,
+                    "ini_inj_coords": self.ini_inj_coords,
+                    "fixed_length": self.fixed_length,
+                    "rf_freq_Hz": getattr(self, "rf_freq_Hz", None),
+                    "alphac": getattr(self, "alphac", None),
+                    "inj_coords_at_failure": inj_coords.copy(),
+                    "dp0_at_failure": dp0,
+                    "M": M,
+                    "sv": sv,
+                    "base_traj": base_traj,
+                    "base_diff": base_diff,
+                }
+                debug_filepath = Path(self.tempdir.name) / "singular_value_debug.pkl"
+                with open(debug_filepath, "wb") as f:
+                    pickle.dump(debug_info, f)
+                print(f"Debug info saved to: {debug_filepath}")
+                raise
 
             # Use all singular values by setting "rcond=1e-4"
             Sinv_trunc = calcTruncSVMatrix(sv, rcond=1e-4, nsv=None, disp=0)
@@ -1638,7 +1666,7 @@ class ClosedOrbitThreader:
         # respect to the design orbit. This means the even if MONI elements are
         # defined with non-zero DX and/or DY values, those values will be ignored.
         for bpm_index, name in enumerate(self.bpm_names["xy"]):
-            watch_pathobj = self.traj_calc_ele_path.with_suffix(f".wc{bpm_index:03d}")
+            watch_pathobj = self.traj_calc_ele_path.with_suffix(f".wc_{bpm_index:03d}")
             temp_watch_elem_name = f"ELEGANT_WATCH_{bpm_index:03d}"
             watch_filepath = watch_pathobj.resolve()
             temp_watch_elem_def = (
@@ -1936,7 +1964,7 @@ class ClosedOrbitThreader:
                 tbt["dt"] = []
             for bpm_index in range(nBPM):
                 watch_pathobj = self.traj_calc_ele_path.with_suffix(
-                    f".wc{bpm_index:03d}"
+                    f".wc_{bpm_index:03d}"
                 )
                 with nostdout():
                     output, _ = sdds.sdds2dicts(watch_pathobj)
@@ -1962,7 +1990,7 @@ class ClosedOrbitThreader:
 
         else:  # This takes only a fraction of a second!
             comb_watch_filepath = self.traj_calc_ele_path.parent / "all.w1"
-            cmd = f"sddscombine -overWrite *.wc??? {comb_watch_filepath.name}"
+            cmd = f"sddscombine -overWrite *.wc_??? {comb_watch_filepath.name}"
             p = Popen(
                 cmd,
                 stdout=PIPE,

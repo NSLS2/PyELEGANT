@@ -2548,6 +2548,300 @@ class NSLS2U(AbstractFacility):
                 )
 
 
+class NSLS2CB(AbstractFacility):
+    def __init__(
+        self,
+        design_LTE: ltemanager.Lattice,
+        lattice_type: str,
+        indiv_design_LTEZIP_filepath: Union[Path, str],
+        error_LTEZIP_name_prefix: str,
+        seed: Union[int, None, np.random.Generator] = 42,
+        output_folder: Union[None, Path, str] = None,
+        spec_filepath: Union[None, Path, str] = None,
+    ):
+
+        super().__init__(
+            design_LTE,
+            lattice_type,
+            indiv_design_LTEZIP_filepath,
+            error_LTEZIP_name_prefix,
+            seed=seed,
+            output_folder=output_folder,
+            spec_filepath=spec_filepath,
+        )
+
+        # "fsdb" stands for "(f)acility-(s)pecific (d)ata(b)ase"
+        self.fsdb = ltemanager.NSLS2CB(
+            self.err.indiv_LTE, lattice_type=self.lattice_type
+        )
+
+        self.elem_inds = self._get_elem_inds()
+
+        self.register_BPMs()
+        self.register_bends()
+        self.register_quads_sexts()
+        self.register_girders()
+
+    def _get_elem_inds(self):
+
+        LTE = self.err.indiv_LTE
+        fsdb = self.fsdb
+
+        elem_inds = {}
+
+        _inds = fsdb.get_regular_BPM_elem_inds()
+        assert len(_inds["x"]) == len(_inds["y"]) == 180
+        assert np.all(_inds["x"] == _inds["y"])
+        elem_inds["BPM"] = _inds["x"]
+
+        elem_inds["BEND"] = fsdb.get_bend_elem_inds()
+        assert (
+            len(elem_inds["BEND"]) == 60 - 2
+        )  # Two dipoles have been converted to complex bends
+
+        elem_inds["COMPLEX_BEND"] = fsdb.get_complex_bend_elem_inds()
+        assert len(elem_inds["COMPLEX_BEND"]) == 3 * 7 * 2
+
+        if self.lattice_type == "20251120_bare_CB":
+            elem_inds["QUAD"] = np.sort(
+                np.hstack(
+                    [
+                        LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
+                    ]
+                )
+            )
+            assert len(elem_inds["QUAD"]) == 240
+        # elif self.lattice_type == "C26_double_mini_beta":
+        #     elem_inds["QUAD"] = np.sort(
+        #         np.hstack(
+        #             [
+        #                 LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+        #                 LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
+        #                 LTE.get_elem_inds_from_regex(r"^Q[DF]C26\w+$"),
+        #             ]
+        #         )
+        #     )
+        #     assert len(elem_inds["QUAD"]) == 240 + 3
+        else:
+            raise NotImplementedError
+
+        elem_inds["HIQUAD"] = LTE.get_elem_inds_from_regex(r"^QM2\w+$")
+        assert len(elem_inds["HIQUAD"]) == 60
+
+        elem_inds["SEXT"] = np.sort(
+            np.hstack(
+                [
+                    LTE.get_elem_inds_from_regex(r"^S[HL]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^SM1\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^CBSH\w+$"),
+                ]
+            )
+        )
+        assert len(elem_inds["SEXT"]) == 240
+
+        elem_inds["HISEXT"] = LTE.get_elem_inds_from_regex(r"^SM2\w+$")
+        assert len(elem_inds["HISEXT"]) == 30
+
+        return elem_inds
+
+    @staticmethod
+    def get_multipole_err_specs():
+        """
+        Based on "~/git_repos/nsls2scripts3/SDDS_multipoles/mpole_err_spec/CD3_mpole_spec.txt"
+
+        Same data in the following SDDS files under "~/git_repos/nsls2scripts3/SDDS_multipoles/mpole_err_spec"
+
+        "quad" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.QUAD
+        CD3-RDMMULT.QUAD
+
+        "QM2" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.HIQUAD
+        CD3-RDMMULT.HIQUAD
+
+        "sext" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.SEXT
+        CD3-RDMMULT.SEXT
+
+        "SM2" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.HISEXT
+        CD3-RDMMULT.HISEXT
+
+        ELEGANT: normal = "an", skew = "bn"
+        Tracy: normal = "Bn", skew = "An"
+        (Note that the sign of "An" is opposite from the sign of "bn".)
+        """
+
+        mp_err_specs = {}
+
+        common = dict(secondary_ref_radius=25e-3, secondary_cutoff=2.0)  # [m]
+
+        # QUAD
+        n_main_poles = 4
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(6, 2e-4)
+        spec.set_secondary_skew(6, 2e-4)
+        spec.set_secondary_norm(8, 2e-4)
+        spec.set_secondary_skew(8, 1e-4)
+        for n_poles in [10, 14, 16, 18]:
+            spec.set_secondary_norm(n_poles, 1e-4)
+            spec.set_secondary_skew(n_poles, 1e-4)
+        for n_poles in [22, 24, 26, 30]:
+            spec.set_secondary_norm(n_poles, 0.5e-4)
+            spec.set_secondary_skew(n_poles, 0.5e-4)
+        for n_poles in [12, 20, 28]:
+            spec.set_secondary_norm(n_poles, 0.0, systematic=3e-4)
+            spec.set_secondary_skew(n_poles, 1e-4)
+        mp_err_specs["QUAD"] = spec
+
+        # HIQUAD (QM2)
+        n_main_poles = 4
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(6, 3e-4)
+        spec.set_secondary_skew(6, 1.5e-4)
+        spec.set_secondary_norm(8, 2e-4)
+        spec.set_secondary_skew(8, 1e-4)
+        spec.set_secondary_norm(10, 0.3e-4)
+        spec.set_secondary_skew(10, 0.1e-4)
+        for n_poles in [14, 16, 18, 22, 24, 26, 30]:
+            spec.set_secondary_norm(n_poles, 0.1e-4)
+            spec.set_secondary_skew(n_poles, 0.11e-4)
+        for n_poles, systematic in [(12, 0.5e-4), (20, 0.5e-4), (28, 0.1e-4)]:
+            spec.set_secondary_norm(n_poles, 0.0, systematic=systematic)
+            spec.set_secondary_skew(n_poles, 0.1e-4)
+        mp_err_specs["HIQUAD"] = spec
+
+        # SEXT
+        n_main_poles = 6
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(2, 30e-4)
+        spec.set_secondary_skew(2, 15e-4)
+        spec.set_secondary_norm(8, 2.5e-4)
+        spec.set_secondary_skew(8, 1e-4)
+        for n_poles in [10, 12, 14, 16]:
+            spec.set_secondary_norm(n_poles, 1e-4)
+            spec.set_secondary_skew(n_poles, 1e-4)
+        spec.set_secondary_norm(18, 0.0, systematic=2e-4)
+        spec.set_secondary_skew(18, 1e-4)
+        for n_poles in [20, 22, 24, 26, 28]:
+            spec.set_secondary_norm(n_poles, 0.5e-4)
+            spec.set_secondary_skew(n_poles, 0.5e-4)
+        spec.set_secondary_norm(30, 0.0, systematic=1e-4)
+        spec.set_secondary_skew(30, 0.5e-4)
+        mp_err_specs["SEXT"] = spec
+
+        # HISEXT (SM2)
+        n_main_poles = 6
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(2, 15e-4)
+        spec.set_secondary_skew(2, 10e-4)
+        spec.set_secondary_norm(8, 3e-4)
+        spec.set_secondary_skew(8, 3e-4)
+        spec.set_secondary_norm(10, 1e-4)
+        spec.set_secondary_skew(10, 1e-4)
+        spec.set_secondary_norm(12, 1e-4)
+        spec.set_secondary_skew(12, 0.5e-4)
+        for n_poles in [14, 16]:
+            spec.set_secondary_norm(n_poles, 0.5e-4)
+            spec.set_secondary_skew(n_poles, 0.5e-4)
+        spec.set_secondary_norm(18, 0.0, systematic=0.5e-4)
+        spec.set_secondary_skew(18, 0.2e-4)
+        for n_poles in [20, 22]:
+            spec.set_secondary_norm(n_poles, 0.1e-4)
+            spec.set_secondary_skew(n_poles, 0.2e-4)
+        for n_poles in [24, 26, 28]:
+            spec.set_secondary_norm(n_poles, 0.1e-4)
+            spec.set_secondary_skew(n_poles, 0.1e-4)
+        spec.set_secondary_norm(30, 0.0, systematic=0.5e-4)
+        spec.set_secondary_skew(30, 0.1e-4)
+        mp_err_specs["HISEXT"] = spec
+
+        return mp_err_specs
+
+    def register_BPMs(self):
+
+        # Some (not all) based on NSLS-II PDR Table 3.1.4
+        offset_spec = TGES(rms=100e-6, rms_unit="m")
+        gain_spec = TGES(rms=5e-2, rms_unit="")
+        tbt_noise_spec = TGES(rms=3e-6, rms_unit="m")
+        co_noise_spec = TGES(rms=0.1e-6, rms_unit="m")
+
+        spec = BPMErrorSpec(
+            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
+            gain=GainSpec(x=gain_spec, y=gain_spec),
+            rot=RotationSpec1D(roll=TGES(rms=0.2e-3, rms_unit="rad")),
+            tbt_noise=NoiseSpec(x=tbt_noise_spec, y=tbt_noise_spec),
+            co_noise=NoiseSpec(x=co_noise_spec, y=co_noise_spec),
+        )
+
+        self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
+
+    def register_bends(self):
+
+        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
+        offset_spec = TGES(rms=100e-6, rms_unit="m")
+        roll_spec = TGES(rms=0.5e-3, rms_unit="rad")
+        n_main_poles = 2
+        main_normal = True
+
+        spec = MagnetErrorSpec(
+            multipole=MultipoleErrorSpec(n_main_poles, main_normal),
+            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
+            rot=RotationSpec1D(roll=roll_spec),
+        )
+
+        self.err.register_magnets(self.elem_inds["BEND"], err_spec=spec)
+
+    def register_quads_sexts(self):
+
+        mp_err_specs = self.get_multipole_err_specs()
+
+        for mag_type, v in mp_err_specs.items():
+            # Based on NSLS-II PDR Table 3.1.9
+            if "QUAD" in mag_type:
+                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=2.5e-4))
+            elif "SEXT" in mag_type:
+                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=5e-4))
+            else:
+                raise ValueError(mag_type)
+            v.set_main_error_spec(main_err_spec)
+
+        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
+        offset_spec = TGES(rms=30e-6, rms_unit="m")
+        roll_spec = TGES(rms=0.2e-3, rms_unit="rad")
+        for mp_type, mp_err_spec in mp_err_specs.items():
+            spec = MagnetErrorSpec(
+                multipole=mp_err_spec,
+                offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
+                rot=RotationSpec1D(roll=roll_spec),
+            )
+
+            self.err.register_magnets(self.elem_inds[mp_type], err_spec=spec)
+
+    def register_girders(self):
+
+        fsdb = self.fsdb
+
+        gs_inds, ge_inds = fsdb.get_girder_marker_pairs()
+
+        # Based on NSLS-II PDR Table 3.1.8
+        offset_spec = TGES(rms=100e-6, rms_unit="m")
+        spec = SupportErrorSpec1DRoll(
+            us_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
+            ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
+            rot=RotationSpec1D(roll=TGES(rms=0.5e-3, rms_unit="rad")),
+        )
+
+        self.err.register_supports(
+            SupportType.girder, gs_inds, ge_inds, spec, overwrite=False
+        )
+
+
 if __name__ == "__main__":
 
     import sys

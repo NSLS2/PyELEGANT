@@ -74,7 +74,7 @@ def print_load():
     out, err = p.communicate()
 
     parsed = re.findall(
-        "NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
+        r"NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
         out,
     )
 
