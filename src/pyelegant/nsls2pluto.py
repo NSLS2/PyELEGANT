@@ -1387,12 +1387,7 @@ def gen_mpi_submit_script(remote_opts):
 
     _env_info = env_info()
     if _env_info.get("env_type").startswith("pixi"):
-        if _env_info["pixi_toml_path"]:
-            python_cmd = (
-                f'pixi run --manifest-path {_env_info["pixi_toml_path"]} python'
-            )
-        else:
-            python_cmd = "pixi run python"
+        python_cmd = shlex.quote(sys.executable)
     else:
         python_cmd = "python"
 
