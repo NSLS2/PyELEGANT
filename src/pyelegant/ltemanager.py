@@ -2162,7 +2162,7 @@ class NSLS2CB(AbstractFacility):
     def __init__(self, LTE: Lattice, lattice_type: str = "20251120_bare_CB"):
         super().__init__(LTE, lattice_type)
 
-        assert self.lat_type in ("20251120_bare_CB",)
+        assert self.lat_type in ("20251120_bare_CB", "20260107_bare_CB_highG")
 
         self.E_MeV = 3e3
         self.harmonic_number = 1320
@@ -2321,7 +2321,12 @@ class NSLS2CB(AbstractFacility):
         LTE = self.LTE
 
         inds = LTE.get_elem_inds_from_regex(r"^S[HLM]\w+$")
-        assert len(inds) == 270
+        assert len(inds) == 270 - 6  # 6 sextupoles have been renamed to "CBSH*"
+
+        dedicated_inds = LTE.get_elem_inds_from_regex(r"^CBSH[1-4]\w+$")
+        assert len(dedicated_inds) == 6
+
+        inds = np.sort(np.concatenate((inds, dedicated_inds)))
 
         return inds
 
@@ -2333,6 +2338,27 @@ class NSLS2CB(AbstractFacility):
         LTE = self.LTE
         names = LTE.get_names_from_elem_inds(inds)
         assert len(names) == 270
+
+        return names
+
+    def get_oct_elem_inds(self):
+        """Get the element indexes for octupoles"""
+
+        LTE = self.LTE
+
+        inds = LTE.get_elem_inds_from_regex(r"^OCT[1-3]_\w+$")
+        assert len(inds) == 0  # Right now there is no octupole in the CB lattice
+
+        return inds
+
+    def get_oct_names(self):
+        """Get the names for octupoles"""
+
+        inds = self.get_oct_elem_inds()
+
+        LTE = self.LTE
+        names = LTE.get_names_from_elem_inds(inds)
+        assert len(names) == len(inds)
 
         return names
 
