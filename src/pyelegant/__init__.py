@@ -34,7 +34,16 @@ del this_folder
 std_print_enabled = dict(out=True, err=True)
 sbatch_std_print_enabled = dict(out=True, err=True)
 
-from . import correct, elebuilder, eleutil, errors, geneopt, linopt_correct, local
+from . import (
+    correct,
+    elebuilder,
+    eleutil,
+    error_specs,
+    errors,
+    geneopt,
+    linopt_correct,
+    local,
+)
 
 try:
     from . import latex

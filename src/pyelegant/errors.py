@@ -23,7 +23,7 @@ import numpy as np
 from ruamel import yaml
 from scipy.stats import truncnorm
 
-from . import ltemanager, sdds
+from . import error_specs, ltemanager, sdds
 
 SupportType = IntEnum("SupportType", ["section", "plinth", "girder"], start=0)
 
@@ -1764,6 +1764,7 @@ class AbstractFacility:
         error_LTEZIP_name_prefix: str,
         seed: Union[int, None, np.random.Generator] = 42,
         output_folder: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.BaseModel, None] = None,
         spec_filepath: Union[None, Path, str] = None,
     ):
         """
@@ -1776,6 +1777,14 @@ class AbstractFacility:
         as some magnet names may have been changed and cause mismatches during
         response matrix construction when the original design file is used.
 
+        Parameters
+        ----------
+        error_spec : Pydantic BaseModel, optional
+            Error specification Pydantic model (e.g., NSLS2ErrorSpecModel).
+            If None, facility-specific default will be created.
+        spec_filepath : Path or str, optional
+            DEPRECATED: Path to YAML file for spec override. Use error_spec instead.
+
         TODO: Must add "split-element" handling for multipole and alignment errors.
         """
         assert isinstance(design_LTE, ltemanager.Lattice)
@@ -1786,6 +1795,10 @@ class AbstractFacility:
         else:
             self.output_folder = Path(output_folder)
 
+        # Store error_spec (will be set by subclass if None)
+        self.error_spec = error_spec
+
+        # Legacy YAML-based spec override (deprecated but kept for backward compatibility)
         if spec_filepath is None:
             self.spec_filepath = None
             self.spec_override = None
@@ -1895,6 +1908,109 @@ class AbstractFacility:
 
         return output_LTEZIP_filepath
 
+    @staticmethod
+    def _tges_from_model(tges_model: error_specs.TGESModel) -> TGES:
+        """Convert Pydantic TGESModel to TGES object."""
+        return TGES(
+            rms=tges_model.rms,
+            rms_unit=tges_model.rms_unit,
+            cutoff=tges_model.cutoff,
+            mean=tges_model.mean,
+        )
+
+    def _offset_spec_2d_from_model(
+        self, offset_model: error_specs.OffsetSpecModel
+    ) -> OffsetSpec2D:
+        """Convert Pydantic OffsetSpecModel to OffsetSpec2D."""
+        return OffsetSpec2D(
+            x=self._tges_from_model(offset_model.x),
+            y=self._tges_from_model(offset_model.y),
+        )
+
+    def _gain_spec_from_model(self, gain_model: error_specs.GainSpecModel) -> GainSpec:
+        """Convert Pydantic GainSpecModel to GainSpec."""
+        return GainSpec(
+            x=self._tges_from_model(gain_model.x),
+            y=self._tges_from_model(gain_model.y),
+        )
+
+    def _rotation_spec_1d_from_model(
+        self, rot_model: error_specs.RotationSpecModel
+    ) -> RotationSpec1D:
+        """Convert Pydantic RotationSpecModel to RotationSpec1D."""
+        return RotationSpec1D(roll=self._tges_from_model(rot_model.roll))
+
+    def _noise_spec_from_model(
+        self, noise_model: error_specs.NoiseSpecModel
+    ) -> NoiseSpec:
+        """Convert Pydantic NoiseSpecModel to NoiseSpec."""
+        return NoiseSpec(
+            x=self._tges_from_model(noise_model.x),
+            y=self._tges_from_model(noise_model.y),
+        )
+
+    def _create_bpm_error_spec(
+        self, bpm_model: error_specs.BPMErrorSpecModel
+    ) -> BPMErrorSpec:
+        """Convert Pydantic BPM model to BPMErrorSpec."""
+        return BPMErrorSpec(
+            offset=self._offset_spec_2d_from_model(bpm_model.offset),
+            gain=self._gain_spec_from_model(bpm_model.gain),
+            rot=self._rotation_spec_1d_from_model(bpm_model.rot),
+            tbt_noise=self._noise_spec_from_model(bpm_model.tbt_noise),
+            co_noise=self._noise_spec_from_model(bpm_model.co_noise),
+        )
+
+    def _create_magnet_error_spec(
+        self,
+        magnet_model: Union[
+            error_specs.BendErrorSpecModel,
+            error_specs.QuadErrorSpecModel,
+            error_specs.SextErrorSpecModel,
+            error_specs.OctErrorSpecModel,
+        ],
+        n_main_poles: int,
+        main_normal: bool,
+        multipole_spec: Union[MultipoleErrorSpec, None] = None,
+    ) -> MagnetErrorSpec:
+        """Convert Pydantic magnet model to MagnetErrorSpec.
+
+        Parameters
+        ----------
+        magnet_model : Pydantic magnet error spec model
+        n_main_poles : int
+            Number of main poles for multipole error spec
+        main_normal : bool
+            Whether main multipole is normal (vs skew)
+        multipole_spec : MultipoleErrorSpec, optional
+            Pre-configured multipole spec (for secondary multipoles).
+            If None, creates basic spec with only main FSE.
+        """
+        if multipole_spec is None:
+            multipole_spec = MultipoleErrorSpec(n_main_poles, main_normal)
+
+        # Set main FSE if specified
+        # BendErrorSpecModel has optional multipole_main_fse
+        # QuadErrorSpecModel, SextErrorSpecModel, OctErrorSpecModel have required main_fse
+        if hasattr(magnet_model, "main_fse"):
+            # Quad/Sext/Oct models
+            if magnet_model.main_fse.rms != 0.0:
+                multipole_spec.main_fse = self._tges_from_model(magnet_model.main_fse)
+        elif (
+            hasattr(magnet_model, "multipole_main_fse")
+            and magnet_model.multipole_main_fse is not None
+        ):
+            # Bend model
+            multipole_spec.main_fse = self._tges_from_model(
+                magnet_model.multipole_main_fse
+            )
+
+        return MagnetErrorSpec(
+            multipole=multipole_spec,
+            offset=self._offset_spec_2d_from_model(magnet_model.offset),
+            rot=RotationSpec1D(roll=self._tges_from_model(magnet_model.roll)),
+        )
+
     def cleanup_tempdirs(self):
         self.design_LTE.remove_tempdir()
 
@@ -1908,6 +2024,7 @@ class NSLS2(AbstractFacility):
         error_LTEZIP_name_prefix: str,
         seed: Union[int, None, np.random.Generator] = 42,
         output_folder: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.NSLS2ErrorSpecModel, None] = None,
         spec_filepath: Union[None, Path, str] = None,
     ):
 
@@ -1918,8 +2035,13 @@ class NSLS2(AbstractFacility):
             error_LTEZIP_name_prefix,
             seed=seed,
             output_folder=output_folder,
+            error_spec=error_spec,
             spec_filepath=spec_filepath,
         )
+
+        # Create default error spec if not provided
+        if self.error_spec is None:
+            self.error_spec = error_specs.NSLS2ErrorSpecModel()
 
         # "fsdb" stands for "(f)acility-(s)pecific (d)ata(b)ase"
         self.fsdb = ltemanager.NSLS2(self.err.indiv_LTE, lattice_type=self.lattice_type)
@@ -2107,77 +2229,74 @@ class NSLS2(AbstractFacility):
         return mp_err_specs
 
     def register_BPMs(self):
-
-        # Some (not all) based on NSLS-II PDR Table 3.1.4
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
-        gain_spec = TGES(rms=5e-2, rms_unit="")
-        tbt_noise_spec = TGES(rms=3e-6, rms_unit="m")
-        co_noise_spec = TGES(rms=0.1e-6, rms_unit="m")
-
-        spec = BPMErrorSpec(
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            gain=GainSpec(x=gain_spec, y=gain_spec),
-            rot=RotationSpec1D(roll=TGES(rms=0.2e-3, rms_unit="rad")),
-            tbt_noise=NoiseSpec(x=tbt_noise_spec, y=tbt_noise_spec),
-            co_noise=NoiseSpec(x=co_noise_spec, y=co_noise_spec),
-        )
-
+        """Register BPM errors using Pydantic spec (based on NSLS-II PDR Table 3.1.4)."""
+        spec = self._create_bpm_error_spec(self.error_spec.bpms)
         self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
 
     def register_bends(self):
-
-        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
-        roll_spec = TGES(rms=0.5e-3, rms_unit="rad")
-        n_main_poles = 2
-        main_normal = True
-
-        spec = MagnetErrorSpec(
-            multipole=MultipoleErrorSpec(n_main_poles, main_normal),
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            rot=RotationSpec1D(roll=roll_spec),
+        """Register bend magnet errors using Pydantic spec (based on NSLS-II PDR Table 3.1.8)."""
+        spec = self._create_magnet_error_spec(
+            self.error_spec.bends,
+            n_main_poles=2,
+            main_normal=True,
         )
-
         self.err.register_magnets(self.elem_inds["BEND"], err_spec=spec)
 
     def register_quads_sexts(self):
-
+        """Register quad and sext magnet errors using Pydantic spec."""
         mp_err_specs = self.get_multipole_err_specs()
 
-        for mag_type, v in mp_err_specs.items():
-            # Based on NSLS-II PDR Table 3.1.9
-            if "QUAD" in mag_type:
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=2.5e-4))
-            elif "SEXT" in mag_type:
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=5e-4))
-            else:
-                raise ValueError(mag_type)
-            v.set_main_error_spec(main_err_spec)
+        # Get Pydantic quads_sexts dict
+        quads_sexts_spec = self.error_spec.quads_sexts
 
-        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
-        offset_spec = TGES(rms=30e-6, rms_unit="m")
-        roll_spec = TGES(rms=0.2e-3, rms_unit="rad")
-        for mp_type, mp_err_spec in mp_err_specs.items():
-            spec = MagnetErrorSpec(
-                multipole=mp_err_spec,
-                offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-                rot=RotationSpec1D(roll=roll_spec),
+        for mag_type, mp_err_spec in mp_err_specs.items():
+            # Get the Pydantic model for this magnet type
+            # Map mag_type to Pydantic spec key
+            if mag_type in quads_sexts_spec:
+                magnet_model = quads_sexts_spec[mag_type]
+            else:
+                raise ValueError(
+                    f"Magnet type {mag_type} not found in quads_sexts spec"
+                )
+
+            # Set main FSE from Pydantic model (based on NSLS-II PDR Table 3.1.9)
+            if magnet_model.main_fse != 0.0:
+                main_err_spec = MainMultipoleErrorSpec(
+                    fse=TGES(rms=magnet_model.main_fse)
+                )
+                mp_err_spec.set_main_error_spec(main_err_spec)
+
+            # Create full magnet error spec using helper
+            spec = self._create_magnet_error_spec(
+                magnet_model,
+                n_main_poles=mp_err_spec.n_main_poles,
+                main_normal=mp_err_spec.main_normal,
+                multipole_spec=mp_err_spec,
             )
 
-            self.err.register_magnets(self.elem_inds[mp_type], err_spec=spec)
+            self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
 
     def register_girders(self):
-
+        """Register girder support errors using Pydantic spec (based on NSLS-II PDR Table 3.1.8)."""
         fsdb = self.fsdb
 
         gs_inds, ge_inds = fsdb.get_girder_marker_pairs()
 
-        # Based on NSLS-II PDR Table 3.1.8
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
+        # Get girder spec from Pydantic model
+        girder_model = self.error_spec.girders
+
         spec = SupportErrorSpec1DRoll(
-            us_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-            ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-            rot=RotationSpec1D(roll=TGES(rms=0.5e-3, rms_unit="rad")),
+            us_offset=OffsetSpec3D(
+                x=self._tges_from_model(girder_model.us_offset.x),
+                y=self._tges_from_model(girder_model.us_offset.y),
+                z=self._tges_from_model(girder_model.us_offset.z),
+            ),
+            ds_offset=OffsetSpec3D(
+                x=self._tges_from_model(girder_model.ds_offset.x),
+                y=self._tges_from_model(girder_model.ds_offset.y),
+                z=self._tges_from_model(girder_model.ds_offset.z),
+            ),
+            rot=RotationSpec1D(roll=self._tges_from_model(girder_model.roll)),
         )
 
         self.err.register_supports(
@@ -2195,7 +2314,11 @@ class NSLS2U(AbstractFacility):
         seed: Union[int, None, np.random.Generator] = 42,
         output_folder: Union[None, Path, str] = None,
         spec_filepath: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.NSLS2UErrorSpecModel, None] = None,
     ):
+        # Create default error spec if not provided
+        if error_spec is None:
+            error_spec = error_specs.NSLS2UErrorSpecModel()
 
         super().__init__(
             design_LTE,
@@ -2205,6 +2328,7 @@ class NSLS2U(AbstractFacility):
             seed=seed,
             output_folder=output_folder,
             spec_filepath=spec_filepath,
+            error_spec=error_spec,
         )
 
         # "fsdb" stands for "(f)acility-(s)pecific (d)ata(b)ase"
@@ -2359,135 +2483,94 @@ class NSLS2U(AbstractFacility):
         return mp_err_specs
 
     def register_BPMs(self):
-
-        # Some (not all) based on NSLS-II PDR Table 3.1.4
-        offset_spec = TGES(rms=100e-6, rms_unit="m", cutoff=1.0)
-        gain_spec = TGES(rms=5e-2, rms_unit="", cutoff=1.0)
-        tbt_noise_spec = TGES(rms=3e-6, rms_unit="m", cutoff=1.0)
-        co_noise_spec = TGES(rms=0.1e-6, rms_unit="m", cutoff=1.0)
-
-        if self.spec_override:
-            ov_spec = self.spec_override.get("bpms", None)
-            if ov_spec:
-                ov_d = ov_spec.get("offset", None)
-                if ov_d:
-                    offset_spec = TGES(**ov_d)
-
-        spec = BPMErrorSpec(
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            gain=GainSpec(x=gain_spec, y=gain_spec),
-            rot=RotationSpec1D(roll=TGES(rms=0.2e-3, rms_unit="rad", cutoff=1.0)),
-            tbt_noise=NoiseSpec(x=tbt_noise_spec, y=tbt_noise_spec),
-            co_noise=NoiseSpec(x=co_noise_spec, y=co_noise_spec),
-        )
-
+        spec = self._create_bpm_error_spec(self.error_spec.bpms)
         self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
 
     def register_bends(self):
-
-        if False:
-            offset_spec = TGES(rms=50e-6, rms_unit="m", cutoff=1.0)
-            roll_spec = TGES(rms=0.25e-3, rms_unit="rad", cutoff=1.0)
-        else:
-            offset_spec = TGES(rms=15e-6, rms_unit="m", cutoff=1.0)
-            roll_spec = TGES(rms=0.1e-3, rms_unit="rad", cutoff=1.0)
-
-        if self.spec_override:
-            ov_spec = self.spec_override.get("bends", None)
-            if ov_spec:
-                ov_d = ov_spec.get("offset", None)
-                if ov_d:
-                    offset_spec = TGES(**ov_d)
-
-                ov_d = ov_spec.get("roll", None)
-                if ov_d:
-                    roll_spec = TGES(**ov_d)
-
         mp_err_specs = self.get_multipole_err_specs()
-        main_err_specs = {4: MainMultipoleErrorSpec(fse=TGES(rms=1e-3, cutoff=1.0))}
+
+        # PMQ uses bend's multipole_main_fse field
+        main_err_specs = {
+            4: MainMultipoleErrorSpec(
+                fse=self._tges_from_model(self.error_spec.bends.multipole_main_fse)
+            )
+        }
         mp_err_specs["PMQ"].set_main_error_spec(main_err_specs)
 
-        spec = MagnetErrorSpec(
-            multipole=mp_err_specs["PMQ"],
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            rot=RotationSpec1D(roll=roll_spec),
+        spec = self._create_magnet_error_spec(
+            self.error_spec.bends,
+            n_main_poles=4,
+            main_normal=True,
+            multipole_spec=mp_err_specs["PMQ"],
         )
 
         self.err.register_magnets(self.elem_inds["PMQ"], err_spec=spec)
 
     def register_quads_nonlin_magnets(self):
-
         mp_err_specs = self.get_multipole_err_specs()
 
         excl_mag_types = ["PMQ"]
 
+        # Set main FSE for each magnet type from Pydantic spec
         for mag_type, v in mp_err_specs.items():
-            if mag_type == "EM_QUAD":
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=2.5e-4, cutoff=1.0))
-            elif mag_type == "SEXT":
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=5e-4, cutoff=1.0))
-            elif mag_type == "OCT":
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=0.0, cutoff=1.0))
-            elif mag_type in excl_mag_types:
+            if mag_type in excl_mag_types:
                 continue
-            else:
-                raise ValueError(mag_type)
+
+            # Get the magnet spec from Pydantic model
+            magnet_spec = self.error_spec.quads_nonlin_magnets.get(mag_type)
+            if magnet_spec is None:
+                raise ValueError(f"Missing spec for magnet type: {mag_type}")
+
+            main_err_spec = MainMultipoleErrorSpec(
+                fse=self._tges_from_model(magnet_spec.main_fse)
+            )
             v.set_main_error_spec(main_err_spec)
 
-        def_offset_spec = TGES(rms=30e-6, rms_unit="m", cutoff=1.0)
-        def_roll_spec = TGES(rms=0.2e-3, rms_unit="rad", cutoff=1.0)
-
-        if self.spec_override:
-            ov_spec = self.spec_override.get("quads_nonlin_magnets", None)
-        else:
-            ov_spec = None
-
+        # Register magnets with error specs
         for mag_type, mp_err_spec in mp_err_specs.items():
             if mag_type in excl_mag_types:
                 continue
 
-            offset_spec = def_offset_spec
-            roll_spec = def_roll_spec
-            if ov_spec:
-                ov_d = ov_spec.get(mag_type, None)
-                if ov_d:
-                    ov_d2 = ov_d.get("offset", None)
-                    if ov_d2:
-                        offset_spec = TGES(**ov_d2)
+            magnet_spec = self.error_spec.quads_nonlin_magnets[mag_type]
 
-                    ov_d2 = ov_d.get("roll", None)
-                    if ov_d2:
-                        roll_spec = TGES(**ov_d2)
+            # Determine n_main_poles and main_normal from magnet type
+            if mag_type == "EM_QUAD":
+                n_main_poles = 4
+                main_normal = True
+            elif mag_type == "SEXT":
+                n_main_poles = 6
+                main_normal = True
+            elif mag_type == "OCT":
+                n_main_poles = 8
+                main_normal = True
+            else:
+                raise ValueError(f"Unknown magnet type: {mag_type}")
 
-            spec = MagnetErrorSpec(
-                multipole=mp_err_spec,
-                offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-                rot=RotationSpec1D(roll=roll_spec),
+            spec = self._create_magnet_error_spec(
+                magnet_spec,
+                n_main_poles=n_main_poles,
+                main_normal=main_normal,
+                multipole_spec=mp_err_spec,
             )
 
             self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
 
     def register_girders(self):
-
         fsdb = self.fsdb
-
         gs_inds, ge_inds = fsdb.get_girder_marker_pairs()
 
-        offset_spec = TGES(rms=100e-6, rms_unit="m", cutoff=1.0)
-        roll_spec = TGES(rms=0.5e-3, rms_unit="rad", cutoff=1.0)
-        chain_constraints = None
+        # Get offset and roll specs from Pydantic model
+        us_offset_x = self._tges_from_model(self.error_spec.girders.us_offset.x)
+        us_offset_y = self._tges_from_model(self.error_spec.girders.us_offset.y)
+        ds_offset_x = self._tges_from_model(self.error_spec.girders.ds_offset.x)
+        ds_offset_y = self._tges_from_model(self.error_spec.girders.ds_offset.y)
+        roll_spec = self._tges_from_model(self.error_spec.girders.roll)
 
+        # Check for chain_constraints (kept for backward compatibility with spec_override)
+        chain_constraints = None
         if self.spec_override:
             ov_spec = self.spec_override.get("girders", None)
             if ov_spec:
-                ov_d = ov_spec.get("offset", None)
-                if ov_d:
-                    offset_spec = TGES(**ov_d)
-
-                ov_d = ov_spec.get("roll", None)
-                if ov_d:
-                    roll_spec = TGES(**ov_d)
-
                 ov_list = ov_spec.get("chain_constraints", None)
                 if ov_list:
                     assert isinstance(ov_list, list)
@@ -2495,8 +2578,8 @@ class NSLS2U(AbstractFacility):
 
         if chain_constraints is None:
             spec = SupportErrorSpec1DRoll(
-                us_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-                ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
+                us_offset=OffsetSpec3D(x=us_offset_x, y=us_offset_y, z=None),
+                ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
                 rot=RotationSpec1D(roll=roll_spec),
             )
 
@@ -2504,8 +2587,8 @@ class NSLS2U(AbstractFacility):
                 SupportType.girder, gs_inds, ge_inds, spec, overwrite=False
             )
         else:
+            # Handle chained girders (advanced feature)
             chained_gs_inds = []
-
             gs_inds_list = gs_inds.tolist()
 
             for _d in chain_constraints:
@@ -2519,7 +2602,7 @@ class NSLS2U(AbstractFacility):
                         chained_us_offset=OffsetSpec3D(
                             x=TGES(**x_spec), y=TGES(**y_spec), z=None
                         ),
-                        ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
+                        ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
                         rot=RotationSpec1D(roll=roll_spec),
                     )
 
@@ -2539,6 +2622,11 @@ class NSLS2U(AbstractFacility):
                     non_chained_ge_inds.append(ge_i)
 
             if non_chained_gs_inds != []:
+                spec = SupportErrorSpec1DRoll(
+                    us_offset=OffsetSpec3D(x=us_offset_x, y=us_offset_y, z=None),
+                    ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
+                    rot=RotationSpec1D(roll=roll_spec),
+                )
                 self.err.register_supports(
                     SupportType.girder,
                     non_chained_gs_inds,
@@ -2558,7 +2646,11 @@ class NSLS2CB(AbstractFacility):
         seed: Union[int, None, np.random.Generator] = 42,
         output_folder: Union[None, Path, str] = None,
         spec_filepath: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.NSLS2CBErrorSpecModel, None] = None,
     ):
+        # Create default error spec if not provided
+        if error_spec is None:
+            error_spec = error_specs.NSLS2CBErrorSpecModel()
 
         super().__init__(
             design_LTE,
@@ -2568,6 +2660,7 @@ class NSLS2CB(AbstractFacility):
             seed=seed,
             output_folder=output_folder,
             spec_filepath=spec_filepath,
+            error_spec=error_spec,
         )
 
         # "fsdb" stands for "(f)acility-(s)pecific (d)ata(b)ase"
@@ -2764,77 +2857,70 @@ class NSLS2CB(AbstractFacility):
         return mp_err_specs
 
     def register_BPMs(self):
-
-        # Some (not all) based on NSLS-II PDR Table 3.1.4
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
-        gain_spec = TGES(rms=5e-2, rms_unit="")
-        tbt_noise_spec = TGES(rms=3e-6, rms_unit="m")
-        co_noise_spec = TGES(rms=0.1e-6, rms_unit="m")
-
-        spec = BPMErrorSpec(
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            gain=GainSpec(x=gain_spec, y=gain_spec),
-            rot=RotationSpec1D(roll=TGES(rms=0.2e-3, rms_unit="rad")),
-            tbt_noise=NoiseSpec(x=tbt_noise_spec, y=tbt_noise_spec),
-            co_noise=NoiseSpec(x=co_noise_spec, y=co_noise_spec),
-        )
-
+        spec = self._create_bpm_error_spec(self.error_spec.bpms)
         self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
 
     def register_bends(self):
-
-        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
-        roll_spec = TGES(rms=0.5e-3, rms_unit="rad")
-        n_main_poles = 2
-        main_normal = True
-
-        spec = MagnetErrorSpec(
-            multipole=MultipoleErrorSpec(n_main_poles, main_normal),
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            rot=RotationSpec1D(roll=roll_spec),
+        spec = self._create_magnet_error_spec(
+            self.error_spec.bends,
+            n_main_poles=2,
+            main_normal=True,
         )
-
         self.err.register_magnets(self.elem_inds["BEND"], err_spec=spec)
 
     def register_quads_sexts(self):
-
         mp_err_specs = self.get_multipole_err_specs()
 
+        # Set main FSE for each magnet type from Pydantic spec
         for mag_type, v in mp_err_specs.items():
-            # Based on NSLS-II PDR Table 3.1.9
-            if "QUAD" in mag_type:
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=2.5e-4))
-            elif "SEXT" in mag_type:
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=5e-4))
-            else:
-                raise ValueError(mag_type)
+            # Get the magnet spec from Pydantic model
+            magnet_spec = self.error_spec.quads_sexts.get(mag_type)
+            if magnet_spec is None:
+                raise ValueError(f"Missing spec for magnet type: {mag_type}")
+
+            main_err_spec = MainMultipoleErrorSpec(
+                fse=self._tges_from_model(magnet_spec.main_fse)
+            )
             v.set_main_error_spec(main_err_spec)
 
-        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
-        offset_spec = TGES(rms=30e-6, rms_unit="m")
-        roll_spec = TGES(rms=0.2e-3, rms_unit="rad")
-        for mp_type, mp_err_spec in mp_err_specs.items():
-            spec = MagnetErrorSpec(
-                multipole=mp_err_spec,
-                offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-                rot=RotationSpec1D(roll=roll_spec),
+        # Register magnets with error specs
+        for mag_type, mp_err_spec in mp_err_specs.items():
+            magnet_spec = self.error_spec.quads_sexts[mag_type]
+
+            # Determine n_main_poles and main_normal from magnet type
+            if "QUAD" in mag_type:
+                n_main_poles = 4
+                main_normal = True
+            elif "SEXT" in mag_type:
+                n_main_poles = 6
+                main_normal = True
+            else:
+                raise ValueError(f"Unknown magnet type: {mag_type}")
+
+            spec = self._create_magnet_error_spec(
+                magnet_spec,
+                n_main_poles=n_main_poles,
+                main_normal=main_normal,
+                multipole_spec=mp_err_spec,
             )
 
-            self.err.register_magnets(self.elem_inds[mp_type], err_spec=spec)
+            self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
 
     def register_girders(self):
-
         fsdb = self.fsdb
-
         gs_inds, ge_inds = fsdb.get_girder_marker_pairs()
 
-        # Based on NSLS-II PDR Table 3.1.8
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
+        # Get offset and roll specs from Pydantic model
+        us_offset_x = self._tges_from_model(self.error_spec.girders.us_offset.x)
+        us_offset_y = self._tges_from_model(self.error_spec.girders.us_offset.y)
+        ds_offset_x = self._tges_from_model(self.error_spec.girders.ds_offset.x)
+        ds_offset_y = self._tges_from_model(self.error_spec.girders.ds_offset.y)
+        roll_spec = self._tges_from_model(self.error_spec.girders.roll)
+
         spec = SupportErrorSpec1DRoll(
-            us_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-            ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-            rot=RotationSpec1D(roll=TGES(rms=0.5e-3, rms_unit="rad")),
+            us_offset=OffsetSpec3D(x=us_offset_x, y=us_offset_y, z=None),
+            ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
+            rot=RotationSpec1D(roll=roll_spec),
         )
 
         self.err.register_supports(

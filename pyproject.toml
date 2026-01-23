@@ -20,6 +20,7 @@ matplotlib = "^3.10"
 "ruamel.yaml" = "0.17.*" # >=0.18 fails at "add_yaml_merge()"
 Pillow = ">=10.0"
 h5py = "^3.14.0"
+pydantic = ">=2.12"
 
 #mpi4py = "^3.1.4"
 #dill = "^0.3.7"
