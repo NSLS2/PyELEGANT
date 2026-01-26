@@ -674,15 +674,17 @@ class NSLS2CBErrorSpecModel(BaseModel):
     complex_bends: CsBendErrorSpecModel = Field(
         default_factory=lambda: CsBendErrorSpecModel(
             offset=OffsetSpecModel(
-                x=TGESModel(rms=15e-6, rms_unit="m", cutoff=1.0),
-                y=TGESModel(rms=15e-6, rms_unit="m", cutoff=1.0),
+                x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
             ),
             roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
-            multipole_main_fse=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+            multipole_main_fse=TGESModel(
+                rms=0.0, rms_unit="", cutoff=1.0
+            ),  # Not implemented / confirmed yet
             multipole=BendMultipoleErrorSpecModel(
                 # Example: Add quadrupole and sextupole errors
-                K1=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),  # Quad component
-                K2=TGESModel(rms=5e-4, rms_unit="", cutoff=1.0),  # Sext component
+                K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
+                K2=TGESModel(rms=5e-4, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
                 # Other multipoles default to rms=0.0
             ),
         ),

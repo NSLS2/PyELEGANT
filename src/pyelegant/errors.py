@@ -14,6 +14,7 @@ from functools import partial
 import json
 from pathlib import Path
 import pickle
+import shutil
 import tempfile
 import time
 from typing import Dict, List, Union
@@ -1577,6 +1578,8 @@ class Errors:
         MALIGN_METHOD = 2  # 0: old, 1: entrance-centered, 2: body-centered
         REFERENCE_CORRECTION = 1  # If nonzero, reference trajectory is subtracted from particle trajectories to compensate for inaccuracy in integration.
 
+        elem_names = [v[0] for v in self.elem_defs]
+
         support_type_names = [enum.name for enum in SupportType]
 
         temp_suppl_filepaths = []
@@ -1751,14 +1754,25 @@ class Errors:
                             )
                         )
 
-                    # Apply K-value multipole errors directly to CSBEND parameters
-                    for k_param, k_val in v.bend_k_errors.items():
-                        if k_val != 0.0:
+                    # Get design K-values from element definition
+                    elem_def = self.elem_defs[elem_names.index(elem_name)]
+                    prop_str = elem_def[2]  # (elem_name, elem_type, prop_str)
+                    design_props = self.indiv_LTE.parse_elem_properties(prop_str)
+
+                    # Apply K-value multipole errors additively to CSBEND design parameters
+                    for k_param, k_error in v.bend_k_errors.items():
+                        # Get design K-value (default to 0.0 if not present)
+                        design_k_val = design_props.get(k_param, 0.0)
+                        # Add error to design value
+                        total_k_val = design_k_val + k_error
+                        if (
+                            total_k_val != design_k_val
+                        ):  # Only modify if there's an actual error
                             mods.append(
                                 dict(
                                     elem_name=elem_name,
                                     prop_name=k_param,  # K1, K2, ..., KS1, KS2, ...
-                                    prop_val=f"{k_val:.9e}",
+                                    prop_val=f"{total_k_val:.9e}",
                                 )
                             )
 
@@ -1766,6 +1780,10 @@ class Errors:
                     continue
 
                 # Normal handling for MultipoleErrorSpec
+                if mpole_err is None:
+                    # No multipole errors defined for this element
+                    continue
+
                 is_bend = mpole_err.n_main_poles == 2
 
                 misaligned = False
@@ -1998,6 +2016,16 @@ class AbstractFacility:
             self.err.generate_LTE_file_wo_errors(
                 output_LTEZIP_filepath=self.indiv_design_LTEZIP_filepath
             )
+        elif not self.indiv_design_LTEZIP_filepath.exists():
+            src_filepath = Path(self.design_LTE.LTEZIP_filepath)
+            if src_filepath.is_file():
+                # Just create a copy of the design LTEZIP file
+                shutil.copyfile(
+                    src_filepath,
+                    self.indiv_design_LTEZIP_filepath,
+                )
+            else:
+                self.design_LTE.zip_lte(self.indiv_design_LTEZIP_filepath)
 
     def _unique_rand_int_generator(self):
 

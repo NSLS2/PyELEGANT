@@ -2081,19 +2081,23 @@ class ClosedOrbitThreader:
             col = d["columns"]
             dp = d["params"]["delta"]
             cod_calc_failed = False
+
+            cur_orb = {}
+            for plane in "xy":
+                if plane not in all_elems_to_bpms:
+                    _elem_names = col["ElementName"].tolist()
+                    for _plane in "xy":
+                        all_elems_to_bpms[_plane] = [
+                            _elem_names.index(_name) for _name in self.bpm_names[_plane]
+                        ]
+
+                cur_orb[plane] = col[plane][all_elems_to_bpms[plane]]
         except:
             cod_calc_failed = True
 
-        cur_orb = {}
-        for plane in "xy":
-            if plane not in all_elems_to_bpms:
-                _elem_names = col["ElementName"].tolist()
-                for _plane in "xy":
-                    all_elems_to_bpms[_plane] = [
-                        _elem_names.index(_name) for _name in self.bpm_names[_plane]
-                    ]
-
-            cur_orb[plane] = col[plane][all_elems_to_bpms[plane]]
+            cur_orb = {}
+            col = dict(x=None, xp=None, y=None, yp=None, s=None)
+            dp = np.nan
 
         if False:
             flat_target_orb = np.append(self.target_orbit["x"], self.target_orbit["y"])
