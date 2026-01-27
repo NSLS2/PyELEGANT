@@ -280,6 +280,9 @@ class BendMultipoleErrorSpec:
 
     _def_fac = partial(TGES, rms=0.0, rms_unit="")
 
+    # Main dipole fractional strength error
+    main_fse: TGES = dc.field(default_factory=_def_fac)  # Dipole FSE
+
     # Normal multipoles (Kn where n corresponds to ELEGANT's Kn parameter)
     K1: TGES = dc.field(default_factory=_def_fac)  # Quadrupole (2-pole)
     K2: TGES = dc.field(default_factory=_def_fac)  # Sextupole (3-pole)
@@ -1179,6 +1182,18 @@ class Errors:
 
                     # Handle BendMultipoleErrorSpec (direct K-values for CSBEND)
                     if isinstance(spec2, BendMultipoleErrorSpec):
+                        # Handle main_fse first
+                        if spec2.main_fse.rms > 0.0 or spec2.main_fse.mean != 0.0:
+                            prop_path = [prop_name, "main_fse"]
+                            self._magnets_dist[
+                                (
+                                    spec2.main_fse.rms,
+                                    spec2.main_fse.cutoff,
+                                    spec2.main_fse.mean,
+                                )
+                            ].append((ei, elem_name, prop_path))
+
+                        # Handle K-parameters
                         for k_param in [
                             "K1",
                             "K2",
@@ -1327,12 +1342,12 @@ class Errors:
                 if (
                     len(prop_path) == 2
                     and prop_path[0] == "multipole"
-                    and prop_path[1].startswith("K")
+                    and (prop_path[1].startswith("K") or prop_path[1] == "main_fse")
                 ):
-                    # For CSBEND K-parameters, store directly for later application to LTE
+                    # For CSBEND K-parameters and main_fse, store directly for later application to LTE
                     # The actual application happens in the LTE generation phase
                     magnet_err = self.ring[ei]["magnet"]
-                    # Store the K-value in a special dict for direct parameter application
+                    # Store the K-value or main_fse in a special dict for direct parameter application
                     if not hasattr(magnet_err, "bend_k_errors"):
                         magnet_err.bend_k_errors = {}
                     magnet_err.bend_k_errors[prop_path[1]] = prop_val
@@ -1759,8 +1774,23 @@ class Errors:
                     prop_str = elem_def[2]  # (elem_name, elem_type, prop_str)
                     design_props = self.indiv_LTE.parse_elem_properties(prop_str)
 
+                    # Apply main FSE to bending angle if specified
+                    if "main_fse" in v.bend_k_errors:
+                        main_fse = v.bend_k_errors["main_fse"]
+                        if main_fse != 0.0:
+                            mods.append(
+                                dict(
+                                    elem_name=elem_name,
+                                    prop_name="FSE_DIPOLE",
+                                    prop_val=f"{main_fse:.9e}",
+                                )
+                            )
+
                     # Apply K-value multipole errors additively to CSBEND design parameters
                     for k_param, k_error in v.bend_k_errors.items():
+                        if k_param == "main_fse":
+                            # Already handled above
+                            continue
                         # Get design K-value (default to 0.0 if not present)
                         design_k_val = design_props.get(k_param, 0.0)
                         # Add error to design value
@@ -2212,17 +2242,14 @@ class AbstractFacility:
                     magnet_model.multipole
                 )
             else:
-                # No multipole errors specified
-                bend_multipole_spec = None
+                # No multipole errors specified, create empty spec
+                bend_multipole_spec = BendMultipoleErrorSpec()
 
             # Set main FSE if specified
             if magnet_model.multipole_main_fse is not None:
-                if bend_multipole_spec is None:
-                    # Create a BendMultipoleErrorSpec just for main FSE
-                    # (This is unusual but possible)
-                    bend_multipole_spec = BendMultipoleErrorSpec()
-                # Note: main_fse is stored separately, not in BendMultipoleErrorSpec
-                # We'll handle it via MagnetErrorSpec initialization
+                bend_multipole_spec.main_fse = self._tges_from_model(
+                    magnet_model.multipole_main_fse
+                )
 
             return MagnetErrorSpec(
                 multipole=bend_multipole_spec,

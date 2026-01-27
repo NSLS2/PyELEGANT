@@ -678,9 +678,7 @@ class NSLS2CBErrorSpecModel(BaseModel):
                 y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
             ),
             roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
-            multipole_main_fse=TGESModel(
-                rms=0.0, rms_unit="", cutoff=1.0
-            ),  # Not implemented / confirmed yet
+            multipole_main_fse=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
             multipole=BendMultipoleErrorSpecModel(
                 # Example: Add quadrupole and sextupole errors
                 K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
