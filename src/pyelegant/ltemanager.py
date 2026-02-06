@@ -170,11 +170,23 @@ class Lattice:
     def remove_tempdir(self):
         if self.tempdir is None:
             return
-        elif isinstance(self.tempdir, Path):
-            if self.tempdir.exists():
-                shutil.rmtree(self.tempdir)
-        else:
-            self.tempdir.cleanup()
+        # Avoid using isinstance(), hasattr(), or other builtins during shutdown,
+        # which may cause issues when launched by the VS code debugger.
+        # Just try to use the object directly and catch exceptions
+        try:
+            # Try Path object cleanup first
+            self.tempdir.exists()
+            # If .exists() worked, it's a Path object
+            shutil.rmtree(self.tempdir)
+        except AttributeError:
+            # .exists() failed, so it's a TemporaryDirectory object
+            try:
+                self.tempdir.cleanup()
+            except Exception:
+                pass
+        except Exception:
+            # Any other error, just ignore during shutdown
+            pass
 
     def __del__(self):
         if self.del_tempdir_on_exit:

@@ -1542,7 +1542,10 @@ def calc_find_aper_nlines(
             else:
                 try:
                     os.remove(fp)
-                except:
+                except FileNotFoundError:
+                    # File already deleted (likely by SLURM job cleanup)
+                    pass
+                except Exception:
                     print(f'Failed to delete "{fp}"')
 
     return output_filepath
