@@ -19,24 +19,27 @@ PyELEGANT provides a comprehensive Python interface to the ELEGANT accelerator p
 
 Pixi is a fast, modern package manager that simplifies environment management. Install it following the [official instructions](https://pixi.sh/latest/#installation).
 
+**Note for conda users:** Unlike conda, pixi environments are project-specific and tied to the repository directory (where `pixi.toml` lives). You must be in the PyELEGANT directory to use `pixi shell` or `pixi run` commands. To use the environment from other directories, use `pixi shell --manifest-path /path/to/PyELEGANT/pixi.toml`.
+
 #### Quick Start
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/NSLS-II/PyELEGANT.git
+   git clone https://github.com/NSLS2/PyELEGANT.git
    cd PyELEGANT
    ```
 
-2. **Configure for your facility:**
+2. **Configure for your facility (can skip if you don't plan to use a cluster):**
    ```bash
    cp .env.example .env
    # Edit .env and set PYELEGANT_REMOTE to your facility (e.g., nsls2pluto)
    ```
 
-3. **Install with pixi (installs from git by default):**
+3. **Set up the environment and install PyELEGANT:**
    ```bash
-   pixi install
+   pixi run install-editable
    ```
+   This automatically creates the environment and installs PyELEGANT in editable/development mode.
 
 4. **Activate the environment:**
    ```bash
@@ -44,48 +47,62 @@ Pixi is a fast, modern package manager that simplifies environment management. I
    ```
    The `.env` file will be automatically loaded, setting `PYELEGANT_REMOTE` for your facility.
 
-5. **For development, install in editable mode:**
-   ```bash
-   pixi run install-editable
-   ```
-
-6. **Run commands in the environment:**
+5. **Run commands in the environment:**
    ```bash
    pixi run python your_script.py
    pixi run jupyter lab
    ```
 
+   To open Jupyter notebooks in VS Code:
+   ```bash
+   code your_notebook.ipynb
+   ```
+
+#### Using the Environment from Other Directories
+
+After the initial setup, you can activate the environment from anywhere using `--manifest-path`:
+
+```bash
+pixi shell --manifest-path /path/to/PyELEGANT/pixi.toml
+```
+
+This allows you to work with PyELEGANT while being in a different directory.
+
 **Note:** The pixi configuration includes cluster compatibility requirements (Python 3.12.*, icu < 78) to prevent library version conflicts on compute clusters. Environment variables from `.env` are automatically loaded when importing pyelegant.
 
 #### Available Environments
 
-PyELEGANT provides multiple environments for different use cases. By default, pyelegant is installed from the git repository. For development, run `pixi run install-editable` to switch to editable mode:
+PyELEGANT provides multiple environments for different use cases. After running `pixi install`, use `pixi run install-editable` to install the package, or `pixi run install-editable-all` for all optional dependencies:
 
 - **default**: Base installation with Jupyter support (Python 3.12.*)
   ```bash
   pixi install
-  pixi run install-editable  # For development work
+  pixi run install-editable
   ```
 
-- **parallel**: Includes MPI support for parallel computing (mpi4py installed via pip)
+- **parallel**: Includes MPI support for parallel computing (mpi4py)
   ```bash
   pixi install --environment parallel
   pixi shell --environment parallel
+  pixi run install-editable
   ```
 
 - **genreport**: Includes tools for report generation (PyLaTeX, XlsxWriter)
   ```bash
   pixi install --environment genreport
+  pixi run install-editable
   ```
 
 - **all**: All optional dependencies
   ```bash
   pixi install --environment all
+  pixi run install-editable-all
   ```
 
 - **dev**: Development environment with testing tools
   ```bash
   pixi install --environment dev
+  pixi run install-editable-all
   pixi run test  # Run tests
   ```
 
@@ -228,7 +245,7 @@ BSD 3-Clause License. See [LICENSE](LICENSE) for details.
 
 ## Repository
 
-GitHub: [https://github.com/NSLS-II/PyELEGANT](https://github.com/NSLS-II/PyELEGANT)
+GitHub: [https://github.com/NSLS2/PyELEGANT](https://github.com/NSLS2/PyELEGANT)
 
 ## Acknowledgments
 
