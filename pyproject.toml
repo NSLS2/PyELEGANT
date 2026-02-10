@@ -5,7 +5,7 @@ description = "Python Interface to the 6D Accelerator Program ELEGANT (ELEctron 
 authors = ["Yoshiteru Hidaka <yhidaka@bnl.gov>"]
 maintainers = ["Yoshiteru Hidaka <yhidaka@bnl.gov>"]
 license = "BSD-3-Clause"
-repository = "https://github.com/NSLS-II/PyELEGANT"
+repository = "https://github.com/NSLS2/PyELEGANT"
 
 packages = [
     { include = "pyelegant", from = "src" },

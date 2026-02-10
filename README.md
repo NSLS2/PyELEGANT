@@ -12,7 +12,7 @@ PyELEGANT provides a comprehensive Python interface to the ELEGANT accelerator p
 
 ### Prerequisites
 
-- Python >= 3.11
+- Python 3.12.* (for pixi setup)
 - [pixi](https://pixi.sh) (recommended) or conda/mamba
 
 ### Using Pixi (Recommended)
@@ -30,7 +30,7 @@ Pixi is a fast, modern package manager that simplifies environment management. I
 2. **Configure for your facility:**
    ```bash
    cp .env.example .env
-   # Edit .env and set PYELEGANT_REMOTE to your facility (e.g., nsls2pluto, aps, esrf)
+   # Edit .env and set PYELEGANT_REMOTE to your facility (e.g., nsls2pluto)
    ```
 
 3. **Install with pixi (installs from git by default):**
@@ -88,20 +88,6 @@ PyELEGANT provides multiple environments for different use cases. By default, py
   pixi install --environment dev
   pixi run test  # Run tests
   ```
-
-#### Activating the Environment
-
-To activate the pixi environment in your current shell:
-
-```bash
-pixi shell
-```
-
-Or run commands directly:
-
-```bash
-pixi run python -c "import pyelegant; print(pyelegant.__version__)"
-```
 
 ### Using Poetry (Alternative)
 
@@ -203,8 +189,7 @@ pixi run pytest tests/
 Set up pre-commit hooks for code quality:
 
 ```bash
-pixi shell --environment dev
-pre-commit install
+pixi run -e dev pre-commit install
 ```
 
 ## Documentation
