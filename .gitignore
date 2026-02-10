@@ -13,6 +13,13 @@ tests/
 facility.json
 version.json
 
+# Environment configuration (user/facility-specific)
+.env
+
+# VS Code configuration
+.vscode/
+*.code-workspace
+
 demo/*.hdf5
 demo/*.pgz
 

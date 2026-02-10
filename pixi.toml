@@ -1,0 +1,64 @@
+[project]
+name = "pyelegant"
+version = "0.14.0"
+description = "Python Interface to the 6D Accelerator Program ELEGANT (ELEctron Generation ANd Tracking)"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[feature.base.dependencies]
+python = "3.12.*"
+pip = ">=25.3,<26"
+icu = "<78" # cluster compatibility requirements as of 01/21/2026; python breaks otherwise (try importing sqlite3).
+
+[feature.base.pypi-dependencies]
+numpy = ">=2.3.2,<3.0"
+scipy = ">=1.16.1,<2.0"
+matplotlib = ">=3.10,<4.0"
+"ruamel.yaml" = ">=0.17,<0.18" # >=0.18 fails at "add_yaml_merge()"
+pillow = ">=10.0"
+h5py = ">=3.14.0,<4.0"
+pydantic = ">=2.12"
+python-dotenv = ">=1.0.0"
+pyelegant = { git = "https://github.com/NSLS2/PyELEGANT.git", branch = "update-deps" }
+
+[feature.jupy.pypi-dependencies]
+jupyter = ">=1.1.1"
+ipympl = ">=0.9.7"
+
+[feature.parallel.pypi-dependencies]
+dill = ">=0.4.0"
+qtpy = ">=2.4.3"
+mpi4py = ">=3.1.0"
+
+[feature.genreport.pypi-dependencies]
+qtpy = ">=2.4.3"
+pylatex = ">=1.4.2"
+xlsxwriter = ">=3.2.5"
+packaging = ">=25.0"
+
+[feature.all.pypi-dependencies]
+jupyter = ">=1.1.1"
+ipympl = ">=0.9.7"
+dill = ">=0.4.0"
+qtpy = ">=2.4.3"
+pyqt5 = ">=5.15.10"
+pylatex = ">=1.4.2"
+xlsxwriter = ">=3.2.5"
+packaging = ">=25.0"
+mpi4py = ">=3.1.0"
+
+[feature.dev.pypi-dependencies]
+pytest = ">=8.4.1"
+pre-commit = "*"
+
+[environments]
+default = { features = ["base", "jupy"], no-default-feature = true }
+parallel = { features = ["base", "parallel"], no-default-feature = true }
+genreport = { features = ["base", "genreport"], no-default-feature = true }
+all = { features = ["base", "all"], no-default-feature = true }
+dev = { features = ["base", "all", "dev"], no-default-feature = true }
+
+[feature.base.tasks]
+install-editable-all = "pip install -e '.[all]'"
+install-editable = "pip install -e ."
+test = "pytest tests/"

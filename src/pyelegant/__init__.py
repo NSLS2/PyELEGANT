@@ -6,10 +6,14 @@ import re
 import shlex
 from subprocess import PIPE, Popen
 
+from dotenv import load_dotenv
 import matplotlib.pylab as plt
 
 plt.rcParams["mathtext.fontset"] = "cm"
 plt.rcParams["mathtext.rm"] = "serif"
+
+# Load environment variables from .env file in project root
+load_dotenv()
 
 __version__ = {"PyELEGANT": importlib.metadata.version(__name__)}
 
