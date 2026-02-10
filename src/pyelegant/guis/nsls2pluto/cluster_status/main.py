@@ -401,7 +401,7 @@ class ClusterStatusWindow(QtWidgets.QMainWindow):
 
     def _sinfo_parsing_nsls2apcluster(self, parsed, partition, state, nodes_str):
 
-        nodes_tuple = tuple(re.findall("\w+\-[\d\-\[\],]+(?<!,)", nodes_str))
+        nodes_tuple = tuple(re.findall(r"\w+\-[\d\-\[\],]+(?<!,)", nodes_str))
 
         nMaxNodeIndex = 100
 
@@ -427,7 +427,7 @@ class ClusterStatusWindow(QtWidgets.QMainWindow):
 
     def _sinfo_parsing_nsls2pluto(self, parsed, partition, state, nodes_str):
 
-        nodes_tuple = tuple(re.findall("[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
+        nodes_tuple = tuple(re.findall(r"[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
 
         nMaxNodeIndex = 100
         avail_prefixes = ["gpu", "hpc"] + self._unexpected_node_prefixes
@@ -509,7 +509,7 @@ class ClusterStatusWindow(QtWidgets.QMainWindow):
         for p in list(self.partition_info):
             preempt_mode = self.partition_info[p]["PreemptMode"]
             nodes_str = self.partition_info[p]["Nodes"]
-            nodes_tuple = tuple(re.findall("\w+\-[\d\-\[\],]+(?<!,)", nodes_str))
+            nodes_tuple = tuple(re.findall(r"\w+\-[\d\-\[\],]+(?<!,)", nodes_str))
             # print((p, preempt_mode, nodes_str, nodes_tuple))
             k = (nodes_tuple, preempt_mode)
             if k not in grouped_partition_names:
@@ -584,7 +584,7 @@ class ClusterStatusWindow(QtWidgets.QMainWindow):
         for p in list(self.partition_info):
             preempt_mode = self.partition_info[p]["PreemptMode"]
             nodes_str = self.partition_info[p]["Nodes"]
-            nodes_tuple = tuple(re.findall("[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
+            nodes_tuple = tuple(re.findall(r"[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
             # print((p, preempt_mode, nodes_str, nodes_tuple))
             k = (nodes_tuple, preempt_mode)
             if k not in grouped_partition_names:

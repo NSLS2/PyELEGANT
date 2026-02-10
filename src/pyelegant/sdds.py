@@ -230,8 +230,8 @@ def printout(
             # param_dict = {}
             param_dict = collections.defaultdict(list)
             for k, v_str in re.findall(
-                #'([\w /\(\)\$]+)[ ]+=[ ]+([nae\d\.\+\-]+)[ \n]?',
-                "([\w /\(\)\$\^\*\.]+)[ ]*=[ ]*([naife\d\.\+\-]+)[ \n]?",
+                # r'([\w /\(\)\$]+)[ ]+=[ ]+([nae\d\.\+\-]+)[ \n]?',
+                r"([\w /\(\)\$\^\*\.]+)[ ]*=[ ]*([naife\d\.\+\-]+)[ \n]?",
                 output,
             ):
                 # ^ [n] & [a] is added for digit matching in cases for "nan"

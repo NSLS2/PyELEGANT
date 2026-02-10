@@ -557,7 +557,7 @@ def _plot_cmap(
         v1unitconv, v2unitconv = 1e3, 1e3
         v1lim, v2lim = xlim, ylim
     else:
-        v1name, v2name = "\delta", "x"
+        v1name, v2name = r"\delta", "x"
         v1unitsymb, v2unitsymb = r"\%", r"\mathrm{mm}"
         v1unitconv, v2unitconv = 1e2, 1e3
         v1lim, v2lim = deltalim, xlim
@@ -1223,7 +1223,7 @@ def _plot_fma(
         v1unitconv, v2unitconv = 1e3, 1e3
         v1lim, v2lim = xlim, ylim
     else:
-        v1name, v2name = "\delta", "x"
+        v1name, v2name = r"\delta", "x"
         v1unitsymb, v2unitsymb = r"\%", r"\mathrm{mm}"
         v1unitconv, v2unitconv = 1e2, 1e3
         v1lim, v2lim = deltalim, xlim
@@ -1542,7 +1542,10 @@ def calc_find_aper_nlines(
             else:
                 try:
                     os.remove(fp)
-                except:
+                except FileNotFoundError:
+                    # File already deleted (likely by SLURM job cleanup)
+                    pass
+                except Exception:
                     print(f'Failed to delete "{fp}"')
 
     return output_filepath

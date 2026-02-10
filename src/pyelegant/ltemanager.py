@@ -6,6 +6,7 @@ import gzip
 import json
 from pathlib import Path
 import re
+import shutil
 import tempfile
 from typing import Dict, List, Tuple, Type, Union
 
@@ -142,7 +143,7 @@ class Lattice:
         if not del_tempdir_on_exit:
             tempdir.cleanup()
             generated_temp_folderpath.mkdir(parents=True, exist_ok=True)
-            tempdir = None
+            tempdir = generated_temp_folderpath
 
         temp_lte_file = tempfile.NamedTemporaryFile(
             dir=generated_temp_folderpath, delete=False, suffix=".lte"
@@ -169,8 +170,23 @@ class Lattice:
     def remove_tempdir(self):
         if self.tempdir is None:
             return
-
-        self.tempdir.cleanup()
+        # Avoid using isinstance(), hasattr(), or other builtins during shutdown,
+        # which may cause issues when launched by the VS code debugger.
+        # Just try to use the object directly and catch exceptions
+        try:
+            # Try Path object cleanup first
+            self.tempdir.exists()
+            # If .exists() worked, it's a Path object
+            shutil.rmtree(self.tempdir)
+        except AttributeError:
+            # .exists() failed, so it's a TemporaryDirectory object
+            try:
+                self.tempdir.cleanup()
+            except Exception:
+                pass
+        except Exception:
+            # Any other error, just ignore during shutdown
+            pass
 
     def __del__(self):
         if self.del_tempdir_on_exit:
@@ -229,7 +245,10 @@ class Lattice:
             self._LTE_suppl_files_folderpath = temp_d["suppl_files_folderpath"]
 
         if elem_files_root_folderpath is None:
-            self.elem_files_root_folder = LTE_filepath.parent
+            # Relative file paths specified in the LTE file are interpreted by
+            # ELEGANT as being relative to the current working directory (i.e.,
+            # neither the location of the LTE file nor that of the ELE file).
+            self.elem_files_root_folder = Path.cwd()
         else:
             self.elem_files_root_folder = Path(elem_files_root_folderpath)
 
@@ -413,10 +432,10 @@ class Lattice:
         "LTE_text" must not contain comments and ampersands.
         """
 
-        # matches = re.findall('\s+"?([\w\$]+)"?[ \t]*:[ \t]*(\w+)[ \t]*,?(.*)',
+        # matches = re.findall(r'\s+"?([\w\$]+)"?[ \t]*:[ \t]*(\w+)[ \t]*,?(.*)',
         #' '+LTE_text)
         matches = re.findall(
-            '\s+"?([\w\$:\.]+)"?[ \t]*:[ \t]*(\w+)[ \t]*,?(.*)', " " + LTE_text
+            r'\s+"?([\w\$:\.]+)"?[ \t]*:[ \t]*(\w+)[ \t]*,?(.*)', " " + LTE_text
         )
         # ^ Need to add the initial whitespace to pick up the first occurrence
 
@@ -434,9 +453,9 @@ class Lattice:
         """
 
         # matches = re.findall(
-        #'\s+("?[\w\$:\.]+"?)[ \t]*:[ \t]*("?\w+"?)[ \t]*,?(.*)', LTE_text)
+        # r'\s+("?[\w\$:\.]+"?)[ \t]*:[ \t]*("?\w+"?)[ \t]*,?(.*)', LTE_text)
         matches = re.findall(
-            '\s+"?([\w\$:\.]+)"?[ \t]*:[ \t]*"?([\w\$:\.]+)"?[ \t]*,?(.*)', LTE_text
+            r'\s+"?([\w\$:\.]+)"?[ \t]*:[ \t]*"?([\w\$:\.]+)"?[ \t]*,?(.*)', LTE_text
         )
 
         beamline_def = []
@@ -463,7 +482,7 @@ class Lattice:
         """
 
         matches = re.findall(
-            '\s+USE[ \t]*,[ \t"]*([\w\$]+)[ \t\r\n"]*', LTE_text, re.IGNORECASE
+            r'\s+USE[ \t]*,[ \t"]*([\w\$]+)[ \t\r\n"]*', LTE_text, re.IGNORECASE
         )
 
         if len(matches) > 1:
@@ -1689,7 +1708,7 @@ class NSLS2(AbstractFacility):
 
         LTE = self.LTE
 
-        inds = LTE.get_elem_inds_from_regex("^P[HLM]\w+$")
+        inds = LTE.get_elem_inds_from_regex(r"^P[HLM]\w+$")
         assert len(inds) == 180
 
         return dict(x=inds.copy(), y=inds.copy())
@@ -1711,10 +1730,10 @@ class NSLS2(AbstractFacility):
         """Get the element indexes for slow orbit correctors"""
         LTE = self.LTE
 
-        inds_x = LTE.get_elem_inds_from_regex("^C[HLM][1-2]XG[2-6]\w+$")
+        inds_x = LTE.get_elem_inds_from_regex(r"^C[HLM][1-2]XG[2-6]\w+$")
         assert len(inds_x) == 180
 
-        inds_y = LTE.get_elem_inds_from_regex("^C[HLM][1-2]YG[2-6]\w+$")
+        inds_y = LTE.get_elem_inds_from_regex(r"^C[HLM][1-2]YG[2-6]\w+$")
         assert len(inds_y) == 180
 
         return dict(x=inds_x, y=inds_y)
@@ -1738,7 +1757,7 @@ class NSLS2(AbstractFacility):
         """Get the element indexes for bends"""
 
         LTE = self.LTE
-        inds = LTE.get_elem_inds_from_regex("^B[12]\w+$")
+        inds = LTE.get_elem_inds_from_regex(r"^B[12]\w+$")
         assert len(inds) == 30 * 2
         return inds
 
@@ -1756,10 +1775,10 @@ class NSLS2(AbstractFacility):
     def get_quad_names(self, flat_skew_quad_names: bool = False):
         LTE = self.LTE
 
-        inds = LTE.get_elem_inds_from_regex("^Q[HLM]\w+$")
+        inds = LTE.get_elem_inds_from_regex(r"^Q[HLM]\w+$")
 
         if self.lat_type == "C26_double_mini_beta":
-            inds = np.append(inds, LTE.get_elem_inds_from_regex("^Q[FD]H*C26[AB]$"))
+            inds = np.append(inds, LTE.get_elem_inds_from_regex(r"^Q[FD]H*C26[AB]$"))
             inds = np.sort(inds)
 
         normal_quad_names = LTE.get_names_from_elem_inds(inds)
@@ -1773,7 +1792,7 @@ class NSLS2(AbstractFacility):
                 300 + 4,  # QF split in half
             )
 
-        inds = LTE.get_elem_inds_from_regex("^SQ[HM]\w+$")
+        inds = LTE.get_elem_inds_from_regex(r"^SQ[HM]\w+$")
         skew_quad_names = LTE.get_names_from_elem_inds(inds)
         assert (
             len(skew_quad_names) == 30 * 2
@@ -1815,7 +1834,7 @@ class NSLS2(AbstractFacility):
 
         LTE = self.LTE
 
-        inds = LTE.get_elem_inds_from_regex("^S[HLM]\w+$")
+        inds = LTE.get_elem_inds_from_regex(r"^S[HLM]\w+$")
         assert len(inds) == 270
 
         return inds
@@ -1834,11 +1853,11 @@ class NSLS2(AbstractFacility):
     def get_girder_marker_pairs(self):
         LTE = self.LTE
 
-        gs_inds = LTE.get_elem_inds_from_regex("^GS\w+")
+        gs_inds = LTE.get_elem_inds_from_regex(r"^GS\w+")
         gs_names = LTE.get_names_from_elem_inds(gs_inds)
         assert len(gs_names) == 180
 
-        ge_inds = LTE.get_elem_inds_from_regex("^GE\w+")
+        ge_inds = LTE.get_elem_inds_from_regex(r"^GE\w+")
         ge_names = LTE.get_names_from_elem_inds(ge_inds)
         assert len(ge_names) == 180
 
@@ -1895,7 +1914,7 @@ class NSLS2U(AbstractFacility):
 
         LTE = self.LTE
 
-        inds = LTE.get_elem_inds_from_regex("^BPM_\d+$")
+        inds = LTE.get_elem_inds_from_regex(r"^BPM_\d+$")
         if self.lat_type in (
             "20231218_corConfig20240515",
             "20231218_corConfig20240521",
@@ -1925,7 +1944,7 @@ class NSLS2U(AbstractFacility):
         LTE = self.LTE
 
         if self.lat_type == "20231218_nonsplitSF1":
-            inds = LTE.get_elem_inds_from_regex("^COR_\d+$")
+            inds = LTE.get_elem_inds_from_regex(r"^COR_\d+$")
             n_expected = 7 * self.n_cells
         elif self.lat_type in (
             "20231218_nonsplitSF1_w_skew",
@@ -1933,10 +1952,10 @@ class NSLS2U(AbstractFacility):
             "20231218_corConfig20240513",
             "20231218_corConfig20240515",
         ):
-            inds = LTE.get_elem_inds_from_regex("^ORBCOR_\d+$")
+            inds = LTE.get_elem_inds_from_regex(r"^ORBCOR_\d+$")
             n_expected = 7 * self.n_cells
         elif self.lat_type == "20231218_corConfig20240521":
-            inds = LTE.get_elem_inds_from_regex("^ORBCOR_\d+$")
+            inds = LTE.get_elem_inds_from_regex(r"^ORBCOR_\d+$")
             n_expected = 11 * self.n_cells
         else:
             raise ValueError
@@ -1964,7 +1983,7 @@ class NSLS2U(AbstractFacility):
         """Get the element indexes for bends (combined-function magnets w/ quad components)"""
 
         LTE = self.LTE
-        inds = LTE.get_elem_inds_from_regex("^B\d+_\d+$")
+        inds = LTE.get_elem_inds_from_regex(r"^B\d+_\d+$")
         assert len(inds) == self.n_cells * 15 * 2
         return inds
 
@@ -1983,14 +2002,14 @@ class NSLS2U(AbstractFacility):
 
         LTE = self.LTE
 
-        normal_quad_inds = LTE.get_elem_inds_from_regex("^Q[LSDF]\w+$")
+        normal_quad_inds = LTE.get_elem_inds_from_regex(r"^Q[LSDF]\w+$")
         assert len(normal_quad_inds) == (3 + 2 + 1) * 2 * self.n_cells
 
         if self.lat_type == "20231218_nonsplitSF1":
             skew_quad_inds = np.array([])
             assert len(skew_quad_inds) == 0
         elif self.lat_type == "20231218_nonsplitSF1_w_skew":
-            skew_quad_inds = LTE.get_elem_inds_from_regex("^SKQUAD_\d+$")
+            skew_quad_inds = LTE.get_elem_inds_from_regex(r"^SKQUAD_\d+$")
             assert len(skew_quad_inds) == 7 * self.n_cells
         elif self.lat_type in (
             "20231218_nonsplitSF1_w_skew_v2",
@@ -1998,7 +2017,7 @@ class NSLS2U(AbstractFacility):
             "20231218_corConfig20240515",
             "20231218_corConfig20240521",
         ):
-            skew_quad_inds = LTE.get_elem_inds_from_regex("^SKQUAD_\d+$")
+            skew_quad_inds = LTE.get_elem_inds_from_regex(r"^SKQUAD_\d+$")
             assert len(skew_quad_inds) == 4 * self.n_cells
         else:
             raise ValueError
@@ -2037,7 +2056,7 @@ class NSLS2U(AbstractFacility):
 
         LTE = self.LTE
 
-        inds = LTE.get_elem_inds_from_regex("^S[HLDF]\w+$")
+        inds = LTE.get_elem_inds_from_regex(r"^S[HLDF]\w+$")
         if self.lat_type in (
             "20231218_nonsplitSF1",
             "20231218_nonsplitSF1_w_skew",
@@ -2070,7 +2089,7 @@ class NSLS2U(AbstractFacility):
 
         LTE = self.LTE
 
-        inds = LTE.get_elem_inds_from_regex("^OCT[1-3]_\w+$")
+        inds = LTE.get_elem_inds_from_regex(r"^OCT[1-3]_\w+$")
         assert len(inds) == (3 + 3) * self.n_cells
 
         return inds
@@ -2089,7 +2108,7 @@ class NSLS2U(AbstractFacility):
     def get_girder_marker_pairs(self):
         LTE = self.LTE
 
-        gs_inds = LTE.get_elem_inds_from_regex("^GS\w+")
+        gs_inds = LTE.get_elem_inds_from_regex(r"^GS\w+")
         gs_names = LTE.get_names_from_elem_inds(gs_inds)
         if self.lat_type in (
             "20231218",
@@ -2108,7 +2127,7 @@ class NSLS2U(AbstractFacility):
             raise NotImplementedError
         assert len(gs_names) == n_expected
 
-        ge_inds = LTE.get_elem_inds_from_regex("^GE\w+")
+        ge_inds = LTE.get_elem_inds_from_regex(r"^GE\w+")
         ge_names = LTE.get_names_from_elem_inds(ge_inds)
         assert len(ge_names) == n_expected
 
@@ -2143,6 +2162,251 @@ class NSLS2U(AbstractFacility):
                     assert s_2 == e_2
                     mod_s_1 = s_1.replace("GSG", "GEG")
                     assert mod_s_1 == e_1
+            except AssertionError:
+                print(gs_name, ge_name)
+
+        gs_inds, ge_inds = [np.array(tup) for tup in zip(*g_paired_inds)]
+
+        return gs_inds, ge_inds
+
+
+class NSLS2CB(AbstractFacility):
+    def __init__(self, LTE: Lattice, lattice_type: str = "20251120_bare_CB"):
+        super().__init__(LTE, lattice_type)
+
+        assert self.lat_type in ("20251120_bare_CB", "20260107_bare_CB_highG")
+
+        self.E_MeV = 3e3
+        self.harmonic_number = 1320
+        self.N_KICKS = dict(CSBEND=40, KQUAD=40, KSEXT=20, KOCT=20)
+
+    def get_regular_BPM_elem_inds(self):
+        """Get the element indexes for regular (arc) BPMs"""
+
+        LTE = self.LTE
+
+        inds = LTE.get_elem_inds_from_regex(r"^P[HLM]\w+$")
+        assert len(inds) == 180
+
+        return dict(x=inds.copy(), y=inds.copy())
+
+    def get_regular_BPM_names(self):
+        """Get the names for regular (arc) BPMs"""
+
+        inds_d = self.get_regular_BPM_elem_inds()
+        assert np.all(inds_d["x"] == inds_d["y"])
+
+        LTE = self.LTE
+
+        names = LTE.get_names_from_elem_inds(inds_d["x"])
+        assert len(names) == 180
+
+        return dict(x=names.copy(), y=names.copy())
+
+    def get_slow_corrector_elem_inds(self):
+        """Get the element indexes for slow orbit correctors"""
+        LTE = self.LTE
+
+        inds_x = LTE.get_elem_inds_from_regex(r"^C[HLM][1-2]XG[2-6]\w+$")
+        assert len(inds_x) == 180
+
+        inds_y = LTE.get_elem_inds_from_regex(r"^C[HLM][1-2]YG[2-6]\w+$")
+        assert len(inds_y) == 180
+
+        return dict(x=inds_x, y=inds_y)
+
+    def get_slow_corrector_names(self):
+        """Get the names for slow orbit correctors"""
+
+        inds_d = self.get_slow_corrector_elem_inds()
+
+        LTE = self.LTE
+
+        hcor_names = LTE.get_names_from_elem_inds(inds_d["x"])
+        assert len(hcor_names) == 180
+
+        vcor_names = LTE.get_names_from_elem_inds(inds_d["y"])
+        assert len(vcor_names) == 180
+
+        return dict(x=hcor_names, y=vcor_names)
+
+    def get_bend_elem_inds(self):
+        """Get the element indexes for bends"""
+
+        LTE = self.LTE
+        inds = LTE.get_elem_inds_from_regex(r"^B[12]\w+$")
+        assert len(inds) == 30 * 2 - 2  # 2 bends have been converted to complex bends
+
+        return inds
+
+    def get_complex_bend_elem_inds(self):
+        """Get the element indexes for complex bends"""
+
+        LTE = self.LTE
+        inds = LTE.get_elem_inds_from_regex(r"^CB[12]_[1-3]_\d+$")
+        assert len(inds) == 3 * 7 * 2  # 3 poles x 7 modules x 2 bends
+
+        # LTE.get_names_from_elem_inds(inds)
+
+        return inds
+
+    def get_bend_names(self):
+        """Get the names for bends"""
+
+        inds = self.get_bend_elem_inds()
+
+        LTE = self.LTE
+        names = LTE.get_names_from_elem_inds(inds)
+        assert len(names) == 30 * 2
+
+        return names
+
+    def get_quad_names(self, flat_skew_quad_names: bool = False):
+        LTE = self.LTE
+
+        inds = LTE.get_elem_inds_from_regex(r"^Q[HLM]\w+$")
+
+        if self.lat_type == "C26_double_mini_beta":
+            inds = np.append(inds, LTE.get_elem_inds_from_regex(r"^Q[FD]H*C26[AB]$"))
+            inds = np.sort(inds)
+
+        normal_quad_names = LTE.get_names_from_elem_inds(inds)
+        assert len(normal_quad_names) == len(np.unique(normal_quad_names))
+
+        if self.lat_type != "C26_double_mini_beta":
+            assert len(normal_quad_names) == 300
+        else:
+            assert len(normal_quad_names) in (
+                300 + 3,  # QF not split in half
+                300 + 4,  # QF split in half
+            )
+
+        # For this LTE, the skew quad elements are NOT split into half.
+        inds = LTE.get_elem_inds_from_regex(r"^SQ[HM]\w+$")
+        skew_quad_names = LTE.get_names_from_elem_inds(inds)
+        assert len(skew_quad_names) == 30
+
+        if flat_skew_quad_names:
+            if len(skew_quad_names) == len(np.unique(skew_quad_names)):
+                # When skew quads are split in half, but each half piece is named differently
+                return dict(
+                    normal=normal_quad_names, skew=skew_quad_names, skew_lumped=False
+                )
+            else:
+                # When skew quads are split in half, with each half piece with the same name
+                flat_unique_skew_quad_names = []
+                for i, name in enumerate(skew_quad_names):
+                    if i % 2 == 0:
+                        assert name not in flat_unique_skew_quad_names
+                        flat_unique_skew_quad_names.append(name)
+                    else:
+                        assert name == flat_unique_skew_quad_names[-1]
+
+                return dict(
+                    normal=normal_quad_names,
+                    skew=np.array(flat_unique_skew_quad_names),
+                    skew_lumped=False,
+                )
+        else:
+            if (
+                len(skew_quad_names) == 60
+            ):  # If all skew quad elements are split into half
+                lumped_skew_quad_names = [
+                    skew_quad_names[i * 2 : i * 2 + 2] for i in range(30)
+                ]
+            elif (
+                len(skew_quad_names) == 30
+            ):  # If skew quad elements are NOT split into half
+                lumped_skew_quad_names = [[name] for name in skew_quad_names]
+            else:
+                raise ValueError("Unexpected number of skew quad elements")
+
+            assert len(lumped_skew_quad_names) == 30
+
+            return dict(
+                normal=normal_quad_names, skew=lumped_skew_quad_names, skew_lumped=True
+            )
+
+    def get_sext_elem_inds(self):
+        """Get the element indexes for sextupoles"""
+
+        LTE = self.LTE
+
+        inds = LTE.get_elem_inds_from_regex(r"^S[HLM]\w+$")
+        assert len(inds) == 270 - 6  # 6 sextupoles have been renamed to "CBSH*"
+
+        dedicated_inds = LTE.get_elem_inds_from_regex(r"^CBSH[1-4]\w+$")
+        assert len(dedicated_inds) == 6
+
+        inds = np.sort(np.concatenate((inds, dedicated_inds)))
+
+        return inds
+
+    def get_sext_names(self):
+        """Get the names for sextupoles"""
+
+        inds = self.get_sext_elem_inds()
+
+        LTE = self.LTE
+        names = LTE.get_names_from_elem_inds(inds)
+        assert len(names) == 270
+
+        return names
+
+    def get_oct_elem_inds(self):
+        """Get the element indexes for octupoles"""
+
+        LTE = self.LTE
+
+        inds = LTE.get_elem_inds_from_regex(r"^OCT[1-3]_\w+$")
+        assert len(inds) == 0  # Right now there is no octupole in the CB lattice
+
+        return inds
+
+    def get_oct_names(self):
+        """Get the names for octupoles"""
+
+        inds = self.get_oct_elem_inds()
+
+        LTE = self.LTE
+        names = LTE.get_names_from_elem_inds(inds)
+        assert len(names) == len(inds)
+
+        return names
+
+    def get_girder_marker_pairs(self):
+        LTE = self.LTE
+
+        gs_inds = LTE.get_elem_inds_from_regex(r"^GS\w+")
+        gs_names = LTE.get_names_from_elem_inds(gs_inds)
+        assert len(gs_names) == 180
+
+        ge_inds = LTE.get_elem_inds_from_regex(r"^GE\w+")
+        ge_names = LTE.get_names_from_elem_inds(ge_inds)
+        assert len(ge_names) == 180
+
+        g_paired_names = list(zip(gs_names[:-1], ge_names[1:]))
+        g_paired_inds = list(zip(gs_inds[:-1], ge_inds[1:]))
+        assert len(g_paired_inds) == 179
+
+        g_paired_names.append((gs_names[-1], ge_names[0]))
+        g_paired_inds.append((gs_inds[-1], ge_inds[0]))
+        assert len(g_paired_inds) == 180
+
+        for gs_name, ge_name in g_paired_names:
+            try:
+                assert gs_name[:2] == "GS"
+                assert ge_name[:2] == "GE"
+                if not gs_name.startswith("GSG4C"):
+                    assert gs_name[2:] == ge_name[2:]
+                else:
+                    assert gs_name[2:-1] == ge_name[2:-1]
+                    assert gs_name[-1] == "A"
+                    assert ge_name[-1] == "B"
+
+                # Check uniqueness of the element names
+                assert len(LTE.get_elem_inds_from_name(gs_name)) == 1
+                assert len(LTE.get_elem_inds_from_name(ge_name)) == 1
             except AssertionError:
                 print(gs_name, ge_name)
 

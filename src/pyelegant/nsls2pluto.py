@@ -114,6 +114,49 @@ else:
     raise ValueError(f"Invalid $PYELEGANT_REMOTE: {REMOTE_NAME}")
 
 
+def env_info():
+    exe = Path(sys.executable).resolve()
+    exe_path = str(exe)
+
+    if any(
+        k in os.environ
+        for k in ("PIXI_PROJECT_ROOT", "PIXI_MANIFEST_PATH", "PIXI_ENV_NAME")
+    ):
+        env_type = "pixi (via pixi run)"
+        pixi_toml_path = os.environ.get("PIXI_MANIFEST_PATH", "")
+        return dict(env_type=env_type, exe_path=exe_path, pixi_toml_path=pixi_toml_path)
+
+    if ".pixi" in exe.parts and "envs" in exe.parts:
+        project_root = None
+        for p in exe.parents:
+            if p.name == ".pixi":
+                project_root = p.parent
+                break
+
+        env_type = "pixi (direct interpreter)"
+        if project_root is None:
+            pixi_toml_path = ""
+        else:
+            pixi_toml_path = project_root / "pixi.toml"
+            if not pixi_toml_path.exists():
+                pixi_toml_path = ""
+            else:
+                pixi_toml_path = str(pixi_toml_path)
+
+        return dict(env_type=env_type, exe_path=exe_path, pixi_toml_path=pixi_toml_path)
+
+    if os.environ.get("CONDA_PREFIX"):
+        env_type = "conda"
+        return dict(env_type=env_type, exe_path=exe_path)
+
+    if sys.prefix != sys.base_prefix:
+        env_type = "venv"
+        return dict(env_type=env_type, exe_path=exe_path)
+
+    env_type = "system"
+    return dict(env_type=env_type, exe_path=exe_path)
+
+
 def clear_slurm_excl_nodes():
     """"""
 
@@ -181,7 +224,7 @@ def _get_slurm_partition_info():
     out, err = p.communicate()
 
     parsed = {}
-    for k, v in re.findall("([\w\d]+)=([^\s]+)", out):
+    for k, v in re.findall(r"([\w\d]+)=([^\s]+)", out):
         if k == "PartitionName":
             d = parsed[v] = {}
         else:
@@ -444,7 +487,7 @@ def _get_unexpected_prefix(nodes_str):
 
 def _sinfo_parsing(parsed, partition, state, nodes_str, _unexpected_node_prefixes):
 
-    nodes_tuple = tuple(re.findall("[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
+    nodes_tuple = tuple(re.findall(r"[\w\-]+[\d\-\[\],]+(?<!,)", nodes_str))
 
     nMaxNodeIndex = 100
     avail_prefixes = ["gpu", "hpc"] + _unexpected_node_prefixes
@@ -488,7 +531,7 @@ def get_n_free_cores(partition="normal"):
     out, err = p.communicate()
 
     parsed = {}
-    for k, v in re.findall("([\w\d]+)=([^\s]+)", out):
+    for k, v in re.findall(r"([\w\d]+)=([^\s]+)", out):
         if k == "PartitionName":
             d = parsed[v] = {}
         else:
@@ -531,7 +574,7 @@ def get_n_free_cores(partition="normal"):
     out, err = p.communicate()
 
     parsed = re.findall(
-        "NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
+        r"NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
         out,
     )
 
@@ -1342,11 +1385,17 @@ def gen_mpi_submit_script(remote_opts):
     # MPI_COMPILER_OPT_STR = '--mpi=pmi2'
     MPI_COMPILER_OPT_STR = ""
 
+    _env_info = env_info()
+    if _env_info.get("env_type").startswith("pixi"):
+        python_cmd = shlex.quote(sys.executable)
+    else:
+        python_cmd = "python"
+
     main_script_path = f"{__file__[:-3]}_mpi_script.py"
     srun_cmd_list = [
         "srun",
         MPI_COMPILER_OPT_STR,
-        "python -m mpi4py.futures",
+        f"{python_cmd} -m mpi4py.futures",
         main_script_path,
         "_mpi_starmap",
         input_filepath,

@@ -561,12 +561,12 @@ class Report_NSLS2U_Default:
             mod_LTE_filename = os.path.basename(input_LTE_filepath).replace("_", r"\_")
             ver_str = pe.__version__["PyELEGANT"]
 
-            latex_safe_report_class_name = self.conf["report_class"].replace("_", "\_")
+            latex_safe_report_class_name = self.conf["report_class"].replace("_", r"\_")
 
             default_paragraph = plx.NoEscape(
                 (
                     f"The lattice file being analyzed here is "
-                    f'\seqsplit{{"{mod_LTE_filename}"}}. This report was generated using '
+                    rf'\seqsplit{{"{mod_LTE_filename}"}}. This report was generated using '
                     f"PyELEGANT version {ver_str} and "
                     f'the report format "{latex_safe_report_class_name}" '
                     f"version {self._version.base_version}."
@@ -613,7 +613,7 @@ class Report_NSLS2U_Default:
                             plx.MathText(r"\theta_{\mathrm{bend}}") + " [mrad]",
                             plx.MathText(r"\theta_{\mathrm{in}}") + " [mrad]",
                             plx.MathText(r"\theta_{\mathrm{out}}") + " [mrad]",
-                            plx.MathText("K_1\ [\mathrm{m}^{-2}]"),
+                            plx.MathText(r"K_1\ [\mathrm{m}^{-2}]"),
                         ]
                     )
                     table.add_hline()
@@ -668,7 +668,7 @@ class Report_NSLS2U_Default:
                         [
                             "Name",
                             plx.MathText("L") + " [m]",
-                            plx.MathText("K_1\ [\mathrm{m}^{-2}]"),
+                            plx.MathText(r"K_1\ [\mathrm{m}^{-2}]"),
                         ]
                     )
                     table.add_hline()
@@ -710,7 +710,7 @@ class Report_NSLS2U_Default:
                         [
                             "Name",
                             plx.MathText("L") + " [m]",
-                            plx.MathText("K_2\ [\mathrm{m}^{-3}]"),
+                            plx.MathText(r"K_2\ [\mathrm{m}^{-3}]"),
                         ]
                     )
                     table.add_hline()
@@ -752,7 +752,7 @@ class Report_NSLS2U_Default:
                         [
                             "Name",
                             plx.MathText("L") + " [m]",
-                            plx.MathText("K_3\ [\mathrm{m}^{-4}]"),
+                            plx.MathText(r"K_3\ [\mathrm{m}^{-4}]"),
                         ]
                     )
                     table.add_hline()
@@ -935,7 +935,7 @@ class Report_NSLS2U_Default:
                         table.add_row(
                             [plx.NoEscape(lines[0])] + [plx.NoEscape(" ")] * nEnergies
                         )
-                        _indent = "\quad" * 4 + " "
+                        _indent = r"\quad" * 4 + " "
                         for L in lines[1:-1]:
                             table.add_row(
                                 [plx.NoEscape(_indent + L)]
@@ -1226,13 +1226,13 @@ class Report_NSLS2U_Default:
             val_str = "${:d}$".format(lin_data[k])
         elif k == "f_rev":
             label = "Revolution Frequency "
-            symbol = "$f_{\mathrm{rev}}$"
+            symbol = r"$f_{\mathrm{rev}}$"
             unit = " [kHz]"
             val_str = "${:.3f}$".format(scipy.constants.c / lin_data["circumf"] / 1e3)
         elif k == "T_rev":
             label = "Revolution Period "
-            symbol = "$T_{\mathrm{rev}}$"
-            unit = " [$\mu$s]"
+            symbol = r"$T_{\mathrm{rev}}$"
+            unit = r" [$\mu$s]"
             f_rev = scipy.constants.c / lin_data["circumf"]  # [Hz]
             T_rev = 1.0 / f_rev  # [s]
             val_str = "${:.3f}$".format(T_rev * 1e6)
@@ -1425,7 +1425,7 @@ class Report_NSLS2U_Default:
                 ymax_mm = abs_ymax * 1e3
                 xstep_um = abs_xmax / (ini_ndiv - 1) * 1e6
                 ystep_um = abs_ymax / (ini_ndiv - 1) * 1e6
-                para = f"""\
+                para = rf"""\
                 The dynamic aperture was searched by tracking particles for
                 {n_turns:d} turns along {n_lines:d} radial lines in the range of
                 ${xmin_mm:+.1f} \le x [\mathrm{{mm}}] \le {xmax_mm:+.1f}$ and
@@ -1487,11 +1487,11 @@ class Report_NSLS2U_Default:
                 doc.append(
                     plx.MathText(
                         (
-                            "{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
-                            "\le {xmax_mm:+.3f}) "
+                            r"{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
+                            r"\le {xmax_mm:+.3f}) "
                             r"\times "
-                            "{ny:d}\, ({ymin_mm:+.3f} \le y_0 [\mathrm{{mm}}] "
-                            "\le {ymax_mm:+.3f})"
+                            r"{ny:d}\, ({ymin_mm:+.3f} \le y_0 [\mathrm{{mm}}] "
+                            r"\le {ymax_mm:+.3f})"
                         ).format(
                             nx=nx,
                             ny=ny,
@@ -1502,7 +1502,7 @@ class Report_NSLS2U_Default:
                         )
                     )
                 )
-                doc.append(plx.NoEscape("\ points"))
+                doc.append(plx.NoEscape(r"\ points"))
                 if d_xy["input"]["delta_offset"] != 0.0:
                     doc.append(
                         ", with a constant momentum offset of {:.2g}%.".format(
@@ -1512,7 +1512,7 @@ class Report_NSLS2U_Default:
                 else:
                     doc.append(".")
 
-                doc.append(plx.NoEscape("\ "))
+                doc.append(plx.NoEscape(r"\ "))
 
                 n_turns = d_px["input"]["n_turns"]
                 nx, ndelta = d_px["input"]["nx"], d_px["input"]["ndelta"]
@@ -1525,11 +1525,11 @@ class Report_NSLS2U_Default:
                 doc.append(
                     plx.MathText(
                         (
-                            "{ndelta:d}\, ({delta_min:+.3g} \le \delta [\%] "
-                            "\le {delta_max:+.3g}) "
+                            r"{ndelta:d}\, ({delta_min:+.3g} \le \delta [\%] "
+                            r"\le {delta_max:+.3g}) "
                             r"\times "
-                            "{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
-                            "\le {xmax_mm:+.3f})"
+                            r"{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
+                            r"\le {xmax_mm:+.3f})"
                         ).format(
                             nx=nx,
                             ndelta=ndelta,
@@ -1540,7 +1540,7 @@ class Report_NSLS2U_Default:
                         )
                     )
                 )
-                doc.append(plx.NoEscape("\ points"))
+                doc.append(plx.NoEscape(r"\ points"))
                 if d_px["input"]["y_offset"] != 0.0:
                     doc.append(
                         ", with a constant initial vertical offset of {:.3g} mm.".format(
@@ -1650,11 +1650,11 @@ class Report_NSLS2U_Default:
                 doc.append(
                     plx.MathText(
                         (
-                            "{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
-                            "\le {xmax_mm:+.3f}) "
+                            r"{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
+                            r"\le {xmax_mm:+.3f}) "
                             r"\times "
-                            "{ny:d}\, ({ymin_mm:+.3f} \le y_0 [\mathrm{{mm}}] "
-                            "\le {ymax_mm:+.3f})"
+                            r"{ny:d}\, ({ymin_mm:+.3f} \le y_0 [\mathrm{{mm}}] "
+                            r"\le {ymax_mm:+.3f})"
                         ).format(
                             nx=nx,
                             ny=ny,
@@ -1665,7 +1665,7 @@ class Report_NSLS2U_Default:
                         )
                     )
                 )
-                doc.append(plx.NoEscape("\ points"))
+                doc.append(plx.NoEscape(r"\ points"))
                 if d_xy["input"]["delta_offset"] != 0.0:
                     doc.append(
                         ", with a constant momentum offset of {:.2g}%.".format(
@@ -1675,7 +1675,7 @@ class Report_NSLS2U_Default:
                 else:
                     doc.append(".")
 
-                doc.append(plx.NoEscape("\ "))
+                doc.append(plx.NoEscape(r"\ "))
 
                 n_turns = d_px["input"]["n_turns"]
                 nx, ndelta = d_px["input"]["nx"], d_px["input"]["ndelta"]
@@ -1688,11 +1688,11 @@ class Report_NSLS2U_Default:
                 doc.append(
                     plx.MathText(
                         (
-                            "{ndelta:d}\, ({delta_min:+.3g} \le \delta [\%] "
-                            "\le {delta_max:+.3g}) "
+                            r"{ndelta:d}\, ({delta_min:+.3g} \le \delta [\%] "
+                            r"\le {delta_max:+.3g}) "
                             r"\times "
-                            "{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
-                            "\le {xmax_mm:+.3f})"
+                            r"{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
+                            r"\le {xmax_mm:+.3f})"
                         ).format(
                             nx=nx,
                             ndelta=ndelta,
@@ -1703,7 +1703,7 @@ class Report_NSLS2U_Default:
                         )
                     )
                 )
-                doc.append(plx.NoEscape("\ points"))
+                doc.append(plx.NoEscape(r"\ points"))
                 if d_px["input"]["y_offset"] != 0.0:
                     doc.append(
                         ", with a constant initial vertical offset of {:.3g} mm.".format(
@@ -1857,8 +1857,8 @@ class Report_NSLS2U_Default:
             doc.append(
                 plx.MathText(
                     (
-                        "{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
-                        "\le {xmax_mm:+.3f}) "
+                        r"{nx:d}\, ({xmin_mm:+.3f} \le x_0 [\mathrm{{mm}}] "
+                        r"\le {xmax_mm:+.3f}) "
                     ).format(
                         nx=nx,
                         xmin_mm=abs_xmax * 1e3 * (-1),
@@ -1866,7 +1866,7 @@ class Report_NSLS2U_Default:
                     )
                 )
             )
-            doc.append(plx.NoEscape("\ points"))
+            doc.append(plx.NoEscape(r"\ points"))
             if y0_offset != 0.0:
                 doc.append(
                     ", with a constant initial vertical offset of {:.3g} mm.".format(
@@ -1878,8 +1878,8 @@ class Report_NSLS2U_Default:
 
             doc.append(
                 plx.NoEscape(
-                    f'\ The fitting range was ${_fit_opts["fit_xmin"]*1e3:+.3f} '
-                    f'\le x_0 [\mathrm{{mm}}] \le {_fit_opts["fit_xmax"]*1e3:+.3f}$.'
+                    rf'\ The fitting range was ${_fit_opts["fit_xmin"]*1e3:+.3f} '
+                    rf'\le x_0 [\mathrm{{mm}}] \le {_fit_opts["fit_xmax"]*1e3:+.3f}$.'
                 )
             )
 
@@ -1895,8 +1895,8 @@ class Report_NSLS2U_Default:
             doc.append(
                 plx.MathText(
                     (
-                        "{ny:d}\, ({ymin_mm:+.3f} \le y_0 [\mathrm{{mm}}] "
-                        "\le {ymax_mm:+.3f}) "
+                        r"{ny:d}\, ({ymin_mm:+.3f} \le y_0 [\mathrm{{mm}}] "
+                        r"\le {ymax_mm:+.3f}) "
                     ).format(
                         ny=ny,
                         ymin_mm=abs_ymax * 1e3 * (-1),
@@ -1904,7 +1904,7 @@ class Report_NSLS2U_Default:
                     )
                 )
             )
-            doc.append(plx.NoEscape("\ points"))
+            doc.append(plx.NoEscape(r"\ points"))
             if x0_offset != 0.0:
                 doc.append(
                     ", with a constant initial horizontal offset of {:.3g} mm.".format(
@@ -1916,8 +1916,8 @@ class Report_NSLS2U_Default:
 
             doc.append(
                 plx.NoEscape(
-                    f'\ The fitting range was ${_fit_opts["fit_ymin"]*1e3:+.3f} '
-                    f'\le y_0 [\mathrm{{mm}}] \le {_fit_opts["fit_ymax"]*1e3:+.3f}$.'
+                    rf'\ The fitting range was ${_fit_opts["fit_ymin"]*1e3:+.3f} '
+                    rf'\le y_0 [\mathrm{{mm}}] \le {_fit_opts["fit_ymax"]*1e3:+.3f}$.'
                 )
             )
 
@@ -2089,8 +2089,8 @@ class Report_NSLS2U_Default:
             doc.append(
                 plx.MathText(
                     (
-                        "{ndelta:d}\, ({delta_min:+.3g} \le \delta [\%] "
-                        "\le {delta_max:+.3g}) "
+                        r"{ndelta:d}\, ({delta_min:+.3g} \le \delta [\%] "
+                        r"\le {delta_max:+.3g}) "
                     ).format(
                         ndelta=ndelta,
                         delta_min=delta_min * 1e2,
@@ -2098,7 +2098,7 @@ class Report_NSLS2U_Default:
                     )
                 )
             )
-            doc.append(plx.NoEscape("\ points"))
+            doc.append(plx.NoEscape(r"\ points"))
             if (x0_offset != 0.0) or (y0_offset != 0.0):
                 doc.append(
                     (
@@ -2111,9 +2111,9 @@ class Report_NSLS2U_Default:
 
             doc.append(
                 plx.NoEscape(
-                    f'\ A polynomial of degree {_fit_opts["max_chrom_order"]} was '
+                    rf'\ A polynomial of degree {_fit_opts["max_chrom_order"]} was '
                     f"fit to the tune data in the range of "
-                    f'${_fit_opts["fit_deltalim"][0]*1e2:+.3f} \le \delta [\%] \le '
+                    rf'${_fit_opts["fit_deltalim"][0]*1e2:+.3f} \le \delta [\%] \le '
                     f'{_fit_opts["fit_deltalim"][1]*1e2:+.3f}$.'
                 )
             )
@@ -2125,7 +2125,7 @@ class Report_NSLS2U_Default:
                     aper_str[_k] = ""
                 else:
                     _s = ", ".join([f"{_v * 1e2:+.2f}" for _v in aper_list])
-                    aper_str[_k] = f" ($\delta: [{_s}]$\%)"
+                    aper_str[_k] = rf" ($\delta: [{_s}]$\%)"
             legend_explanation = plx.NoEscape(
                 "In the figure (a), the horizontal dash (-{}-) and dotted (:) "
                 "lines correspond to integer and half-integer tunes, respectively. "
@@ -2278,7 +2278,7 @@ class Report_NSLS2U_Default:
                         auto_height_sentence = ""
                     rf_input = (
                         f"RF bucket height of "
-                        f'{derived_rf_params["bucket_percent"]:.3g}\% '
+                        rf'{derived_rf_params["bucket_percent"]:.3g}\% '
                         f'(RF voltage of {derived_rf_params["rf_volt"]/1e6:.3g} '
                         f"MV{auto_height_sentence})"
                     )
@@ -2299,7 +2299,7 @@ class Report_NSLS2U_Default:
                 else:
                     rf_rad_sentence += " Radiation loss was not included."
                 #
-                para = f"""\
+                para = rf"""\
                 The momentum aperture was searched by tracking particles for
                 {n_turns:d} turns with initial $(x, y) =
                 ({x_initial*1e6:.1f}, {y_initial*1e6:.1f})\, [\mu\mathrm{{m}}]$
@@ -2466,7 +2466,7 @@ class Report_NSLS2U_Default:
                                 [plx.NoEscape(lines[0])]
                                 + [plx.NoEscape(" ")] * nEnergies
                             )
-                            _indent = "\quad" * 4 + " "
+                            _indent = r"\quad" * 4 + " "
                             for L in lines[1:-1]:
                                 table.add_row(
                                     [plx.NoEscape(_indent + L)]
@@ -2586,7 +2586,7 @@ class Report_NSLS2U_Default:
                                 row_list.append(plx.NoEscape(f"{v:.2f}"))
                             table.add_row(row_list)
 
-                            row_list = [plx.NoEscape("RF Bucket Height (\%)")]
+                            row_list = [plx.NoEscape(r"RF Bucket Height (\%)")]
                             for v in self.rf_dep_props[
                                 "rf_bucket_heights_percent_list"
                             ][iEnergy]:
@@ -2676,7 +2676,7 @@ class Report_NSLS2U_Default:
                         ]
                         table.add_row([label] + val_str_list)
                         #
-                        label = plx.NoEscape("Total Beam Charge ($\mu$C)")
+                        label = plx.NoEscape(r"Total Beam Charge ($\mu$C)")
                         val_str_list = [
                             plx.NoEscape(f"{v:.2f}")
                             for v in self.lifetime_props["total_charge_uC_list"]
@@ -2821,7 +2821,7 @@ class Report_NSLS2U_Default:
                         ):
 
                             coupling_caption = (
-                                f"{raw_coup_spec[:-1]}\% Coupling"
+                                rf"{raw_coup_spec[:-1]}\% Coupling"
                                 if raw_coup_spec.endswith("%")
                                 else rf"$\epsilon_y$ = {raw_coup_spec[:-2]} pm"
                             )
@@ -2861,7 +2861,7 @@ class Report_NSLS2U_Default:
                             # doc.append(plx.VerticalSpace(plx.NoEscape('-10pt')))
                             fig.add_caption(
                                 plx.NoEscape(
-                                    "Beam Lifetime vs. RF Voltage \& Beam Energy ("
+                                    r"Beam Lifetime vs. RF Voltage \& Beam Energy ("
                                     + coupling_caption
                                     + ")"
                                 )
@@ -3077,7 +3077,7 @@ class Report_NSLS2U_Default:
                                 [plx.NoEscape(lines[0])]
                                 + [plx.NoEscape(" ")] * nEnergies
                             )
-                            _indent = "\quad" * 4 + " "
+                            _indent = r"\quad" * 4 + " "
                             for L in lines[1:-1]:
                                 table.add_row(
                                     [plx.NoEscape(_indent + L)]
@@ -3192,7 +3192,7 @@ class Report_NSLS2U_Default:
                                 row_list.append(plx.NoEscape(f"{v:.2f}"))
                             table.add_row(row_list)
 
-                            row_list = [plx.NoEscape("RF Bucket Height (\%)")]
+                            row_list = [plx.NoEscape(r"RF Bucket Height (\%)")]
                             for v in self.rf_dep_props[
                                 "rf_bucket_heights_percent_list"
                             ][iEnergy]:
@@ -3282,7 +3282,7 @@ class Report_NSLS2U_Default:
                         ]
                         table.add_row([label] + val_str_list)
                         #
-                        label = plx.NoEscape("Total Beam Charge ($\mu$C)")
+                        label = plx.NoEscape(r"Total Beam Charge ($\mu$C)")
                         val_str_list = [
                             plx.NoEscape(f"{v:.2f}")
                             for v in self.lifetime_props["total_charge_uC_list"]
@@ -3632,7 +3632,7 @@ class Report_NSLS2U_Default:
                             row_list.append(plx.NoEscape(f"{v:.2f}"))
                         table.add_row(row_list)
 
-                        row_list = [plx.NoEscape("RF Bucket Height (\%)")]
+                        row_list = [plx.NoEscape(r"RF Bucket Height (\%)")]
                         for v in self.rf_dep_props["rf_bucket_heights_percent"]:
                             row_list.append(plx.NoEscape(f"{v:.1f}"))
                         table.add_row(row_list)
@@ -3693,7 +3693,7 @@ class Report_NSLS2U_Default:
                         )
                         table.add_row(
                             [
-                                plx.NoEscape("Total Beam Charge ($\mu$C)"),
+                                plx.NoEscape(r"Total Beam Charge ($\mu$C)"),
                                 plx.NoEscape(
                                     f'{self.lifetime_props["total_charge_uC"]:.2f}'
                                 ),
@@ -4520,7 +4520,7 @@ class Report_NSLS2U_Default:
                     " (mm)",
                 )
                 etax_col_index = col
-            elif h == "psix (2\pi)":
+            elif h == r"psix (2\pi)":
                 ws.write_rich_string(
                     row,
                     col,
@@ -4535,7 +4535,7 @@ class Report_NSLS2U_Default:
                     bold,
                     ")",
                 )
-            elif h == "psiy (2\pi)":
+            elif h == r"psiy (2\pi)":
                 ws.write_rich_string(
                     row,
                     col,
@@ -7130,8 +7130,8 @@ class Report_NSLS2U_Default:
             "betax (m)",
             "betay (m)",
             "etax (m)",
-            "psix (2\pi)",
-            "psiy (2\pi)",
+            r"psix (2\pi)",
+            r"psiy (2\pi)",
             "Delta_theta (rad)",
             "Delta_theta (deg)",
         ]
@@ -7854,13 +7854,13 @@ class Report_NSLS2U_Default:
                     ax = plt.gca()
                     ax.get_legend().remove()
 
-                    _title = _title.replace("-", "\mathrm{{-}}")
+                    _title = _title.replace("-", r"\mathrm{{-}}")
 
                     margin = 0.1
                     ax.set_xlim([min(_z_list) - margin, max(_z_list) + margin])
                     ax.set_ylim([min(_x_list) - margin, max(_x_list) + margin])
                     ax.grid(True, linestyle="--")
-                    ax.set_title(rf"$\mathrm{{{_title}}}$".replace(" ", "\;"), size=18)
+                    ax.set_title(rf"$\mathrm{{{_title}}}$".replace(" ", r"\;"), size=18)
                     plt.legend(
                         handles_wo_ebeam_traj,
                         labels_wo_ebeam_traj,
@@ -8356,7 +8356,7 @@ class Report_NSLS2U_Default:
                     ax.grid(True, linestyle="--")
                     if False:
                         ax.set_title(
-                            rf"$\mathrm{{{zoom_title}}}$".replace(" ", "\;"), size=18
+                            rf"$\mathrm{{{zoom_title}}}$".replace(" ", r"\;"), size=18
                         )
                     plt.legend(
                         handles_wo_ebeam_traj,
@@ -8717,9 +8717,10 @@ class Report_NSLS2U_Default:
             use_beamline=use_beamline,
             N_KICKS=N_KICKS,
             del_tmp_files=True,
-            run_local=False,
-            remote_opts=remote_opts,
-            err_log_check=err_log_check,
+            # run_local=False,
+            # remote_opts=remote_opts,
+            # err_log_check=err_log_check,
+            run_local=True,
         )
 
     def _calc_map_xy(
@@ -9821,7 +9822,7 @@ class Report_NSLS2U_Default:
                     [rdts[k] for k in list(RDT)],
                     width=width,
                     align="edge",
-                    label=r"$\mathrm{{{}}}$".format(comp_name.replace(" ", "\;")),
+                    label=r"$\mathrm{{{}}}$".format(comp_name.replace(" ", r"\;")),
                 )
             plt.yscale("log")
             plt.ylabel(r"$|h|$", size=20)
@@ -11799,7 +11800,7 @@ class Report_NSLS2U_Default:
                 ):
 
                     if iCoup == 0:  # Bunchlength does not change with coupling
-                        label = f"$\mathrm{{{E_MeV/1e3:.1f}\, GeV}}$"
+                        label = rf"$\mathrm{{{E_MeV/1e3:.1f}\, GeV}}$"
                         (h1,) = ax1sigz.plot(
                             rf_Vs / 1e6, sigma_zs_ps, ".-", lw=lw, ms=ms, label=label
                         )
@@ -12580,9 +12581,9 @@ class Report_NSLS2U_Default:
         d3 = d2["one_period"]
         #
         d3.append(sqss("Twiss functions for 2 cells (1 super-period)."))
-        d3.append(sqss("Twiss functions $(0 \le s \le 9)$."))
-        d3.append(sqss("Twiss functions $(4 \le s \le 16)$."))
-        d3.append(sqss("Twiss functions $(14 \le s \le 23)$."))
+        d3.append(sqss(r"Twiss functions $(0 \le s \le 9)$."))
+        d3.append(sqss(r"Twiss functions $(4 \le s \le 16)$."))
+        d3.append(sqss(r"Twiss functions $(14 \le s \le 23)$."))
 
         if example:
             _yaml_append_map(d2, "ring_natural", com_seq())

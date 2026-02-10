@@ -36,6 +36,7 @@ class TbTLinOptCorrector:
         self,
         actual_LTE: Lattice,
         E_MeV: float,
+        harmonic_number: int,
         bpmx_names: List[str],
         bpmy_names: List[str],
         normal_quad_names: List[Union[str, List[str]]],
@@ -77,6 +78,8 @@ class TbTLinOptCorrector:
             self.E_MeV,
             N_KICKS=self.N_KICKS,
             fixed_length=True,
+            harmonic_number=harmonic_number,
+            tempdir_path=tempdir_path,
             **actual_inj_CO,
         )
 
@@ -141,16 +144,16 @@ class TbTLinOptCorrector:
     def make_tempdir(self, tempdir_path=None):
         if isinstance(tempdir_path, Path):
             if tempdir_path.exists():
-                self.tempdir = tempdir_path
-                return
+                pass
             else:
+                tempdir_path.mkdir(parents=True, exist_ok=True)
                 tempdir_path = str(tempdir_path)
         elif isinstance(tempdir_path, str):
             tempdir_path = Path(tempdir_path)
             if tempdir_path.exists():
-                self.tempdir = tempdir_path
-                return
+                pass
             else:
+                tempdir_path.mkdir(parents=True, exist_ok=True)
                 tempdir_path = str(tempdir_path)
 
         self.tempdir = tempfile.TemporaryDirectory(
@@ -591,6 +594,7 @@ class TbTLinOptCorrector:
             self.tune_above_half["actual"][plane] = frac_nu > 0.5
 
     def calc_actual_inj_CO(self):
+
         res = self._co_calculator.calc()
         self.actual_inj_CO = {f"{coord}0": v for coord, v in res["inj_COD"].items()}
 
@@ -1535,9 +1539,9 @@ class TbTLinOptCorrector:
         hist = self._actual_design_diff_history
 
         if history:
-            legends = ["$\mathrm{Initial}$"]
+            legends = [r"$\mathrm{Initial}$"]
             for i in range(len(hist["nux"]))[1:]:
-                legends.append(f"$\mathrm{{Iter.\, {i}}}$")
+                legends.append(rf"$\mathrm{{Iter.\, {i}}}$")
 
         plt.figure()
         plt.subplot(211)
@@ -1724,7 +1728,7 @@ class TbTLinOptCorrector:
         if history:
             legends = []
             for i in range(hist.shape[1]):
-                legends.append(f"$\mathrm{{Iter.\, {i}}}$")
+                legends.append(rf"$\mathrm{{Iter.\, {i}}}$")
 
         plt.figure()
         plt.subplot(211)
@@ -1903,6 +1907,7 @@ class AbstractFacility:
         remote_opts: Union[None, Dict] = None,
         normal_quad_inds: Union[None, List] = None,
         skew_quad_inds: Union[None, List] = None,
+        tempdir_path: Union[None, Path, str] = None,
     ):
         """Generate response matrices for linear optics / coupling correction.
 
@@ -1935,6 +1940,7 @@ class AbstractFacility:
         args_optcor = (
             LTE,
             fsdb.E_MeV,
+            fsdb.harmonic_number,
             bpm_names["x"],
             bpm_names["y"],
             quad_names["normal"],
@@ -1945,7 +1951,7 @@ class AbstractFacility:
             tbt_ps_offset_wrt_CO=self.tbt_ps_offset_wrt_CO,
             design_LTE=pickle.loads(pickle.dumps(self.design_LTE)),
             N_KICKS=fsdb.N_KICKS,
-            tempdir_path=None,
+            tempdir_path=tempdir_path,
         )
 
         dK1 = 1e-4  # [m^(-2)]
@@ -1972,6 +1978,7 @@ class AbstractFacility:
             dict(
                 lattice_type=fsdb.lat_type,
                 E_MeV=fsdb.E_MeV,
+                harmonic_number=fsdb.harmonic_number,
                 N_KICKS=fsdb.N_KICKS,
                 bpm_names=bpm_names,
                 quad_names=quad_names,
@@ -2018,8 +2025,15 @@ class AbstractFacility:
 
                 mod = importlib.import_module(module_name)
                 func = getattr(mod, func_name)
-                for chunk in chunked_list[:2]:
+                for i_chunk, chunk in enumerate(chunked_list):
+                    print(f"\nProcessing {i_chunk = }\n")
+
+                    # if i_chunk >= 2:
+                    #     break
+                    # if i_chunk <= 37:
+                    #     continue
                     out = func(chunk, *args)
+                # out = func(chunked_list[3], *args)
 
             err_log_check = dict(funcs=[remote.check_remote_err_log_exit_code])
 
@@ -2376,6 +2390,7 @@ class AbstractFacility:
         self.optcor = TbTLinOptCorrector(
             LTE_to_be_corrected,
             fsdb.E_MeV,
+            fsdb.harmonic_number,
             bpm_names["x"],
             bpm_names["y"],
             lumped_quad_names["normal"] if need_quads["normal"] else [],
@@ -2609,13 +2624,110 @@ class NSLS2U(AbstractFacility):
         )
 
 
+class NSLS2CB(AbstractFacility):
+    def __init__(
+        self,
+        design_LTE: Lattice,
+        lattice_type: str,
+        parallel: bool = True,
+        output_folder: Union[None, Path, str] = None,
+    ):
+        super().__init__(design_LTE, parallel=parallel, output_folder=output_folder)
+
+        self.fsdb = ltemanager.NSLS2CB(self.design_LTE, lattice_type=lattice_type)
+        self.LTE = self.fsdb.LTE
+
+        self.config_descr = dict(quad={}, bpm={})
+        _descr = self.config_descr["quad"]
+        _descr["all_independent"] = "Each normal/skew magnet as independent knobs"
+        _descr = self.config_descr["bpm"]
+        _descr["all"] = "Include all regular (arc) BPMs"
+
+    def get_BPM_elem_inds_for_orbit_cor(self):
+        return self.fsdb.get_regular_BPM_elem_inds()
+
+    def get_corrector_elem_inds_for_orbit_cor(self):
+        return self.fsdb.get_slow_corrector_elem_inds()
+
+    def get_BPM_elem_inds_for_linopt_RM(self):
+        return self.get_BPM_elem_inds_for_linopt_cor("all")
+
+    def get_quad_elem_inds_for_linopt_RM(self):
+        names_d = self.fsdb.get_quad_names(flat_skew_quad_names=True)
+
+        LTE = self.LTE
+
+        return dict(
+            normal=LTE.get_elem_inds_from_names(names_d["normal"]),
+            skew=LTE.get_elem_inds_from_names(names_d["skew"]),
+        )
+
+    def get_BPM_elem_inds_for_linopt_cor(self, config_key: Union[int, str] = "all"):
+        assert config_key in self.config_descr["bpm"]
+
+        if config_key == "all":
+            return self.fsdb.get_regular_BPM_elem_inds()
+        else:
+            raise ValueError(f"Invalid `config_key` value: '{config_key}'")
+
+    def get_quad_elem_inds_for_linopt_cor(self, config_key: Union[int, str]):
+        assert config_key in self.config_descr["quad"]
+
+        names_d = self.fsdb.get_quad_names(flat_skew_quad_names=False)
+
+        LTE = self.LTE
+
+        lumped_inds = {}
+        if config_key == "all_independent":
+            lumped_inds["normal"] = [
+                [ind] for ind in LTE.get_elem_inds_from_names(names_d["normal"])
+            ]
+            lumped_inds["skew"] = [
+                LTE.get_elem_inds_from_names(skew_names).tolist()
+                for skew_names in names_d["skew"]
+            ]
+        else:
+            raise ValueError(f"Invalid `config_key` value: '{config_key}'")
+
+        return lumped_inds
+
+    def generate_linopt_numRM_file(
+        self,
+        remote_opts: Union[None, Dict] = None,
+        normal_quad_inds: Union[None, List] = None,
+        skew_quad_inds: Union[None, List] = None,
+        tempdir_path: Union[None, Path, str] = None,
+    ):
+        if self.parallel:
+            default_remote_opts = dict(
+                job_name="RM", partition="normal", ntasks=100, time="30:00", qos="long"
+            )
+
+            if remote_opts is not None:
+                default_remote_opts.update(remote_opts)
+
+                remote_opts = default_remote_opts
+
+        super().generate_linopt_numRM_file(
+            remote_opts=remote_opts,
+            normal_quad_inds=normal_quad_inds,
+            skew_quad_inds=skew_quad_inds,
+            tempdir_path=tempdir_path,
+        )
+
+
 def _calc_linopt_resp(quad_names, dK1, args_optcor, kwargs_optcor):
     optcor = TbTLinOptCorrector(*args_optcor, **kwargs_optcor)
 
     resp_list = []
 
     for name in quad_names:
-        resp_list.append(optcor.calc_response(name, dK1))
+        try:
+            resp_list.append(optcor.calc_response(name, dK1))
+        except Exception as e:
+            print(f"### ERROR occurred when calculating response for quad '{name}' ###")
+            print(f"Error details: {e}")
+            resp_list.append(None)
 
     return resp_list
 

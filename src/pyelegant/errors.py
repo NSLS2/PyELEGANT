@@ -14,6 +14,7 @@ from functools import partial
 import json
 from pathlib import Path
 import pickle
+import shutil
 import tempfile
 import time
 from typing import Dict, List, Union
@@ -23,7 +24,7 @@ import numpy as np
 from ruamel import yaml
 from scipy.stats import truncnorm
 
-from . import ltemanager, sdds
+from . import error_specs, ltemanager, sdds
 
 SupportType = IntEnum("SupportType", ["section", "plinth", "girder"], start=0)
 
@@ -266,6 +267,43 @@ class MainMultipoleError:
     fse: float = 0.0
 
 
+@dataclass
+class BendMultipoleErrorSpec:
+    """
+    Multipole error specification for bend magnets (CSBEND).
+
+    Maps directly to ELEGANT's K1-K8 (normal) and KS1-KS8 (skew) parameters.
+    Each field represents the truncated Gaussian error spec for that multipole order.
+
+    Note: K1 corresponds to quadrupole (2-pole), K2 to sextupole (3-pole), etc.
+    """
+
+    _def_fac = partial(TGES, rms=0.0, rms_unit="")
+
+    # Main dipole fractional strength error
+    main_fse: TGES = dc.field(default_factory=_def_fac)  # Dipole FSE
+
+    # Normal multipoles (Kn where n corresponds to ELEGANT's Kn parameter)
+    K1: TGES = dc.field(default_factory=_def_fac)  # Quadrupole (2-pole)
+    K2: TGES = dc.field(default_factory=_def_fac)  # Sextupole (3-pole)
+    K3: TGES = dc.field(default_factory=_def_fac)  # Octupole (4-pole)
+    K4: TGES = dc.field(default_factory=_def_fac)  # Decapole (5-pole)
+    K5: TGES = dc.field(default_factory=_def_fac)  # Dodecapole (6-pole)
+    K6: TGES = dc.field(default_factory=_def_fac)  # 14-pole (7-pole)
+    K7: TGES = dc.field(default_factory=_def_fac)  # 16-pole (8-pole)
+    K8: TGES = dc.field(default_factory=_def_fac)  # 18-pole (9-pole)
+
+    # Skew multipoles
+    KS1: TGES = dc.field(default_factory=_def_fac)  # Skew Quadrupole
+    KS2: TGES = dc.field(default_factory=_def_fac)  # Skew Sextupole
+    KS3: TGES = dc.field(default_factory=_def_fac)  # Skew Octupole
+    KS4: TGES = dc.field(default_factory=_def_fac)  # Skew Decapole
+    KS5: TGES = dc.field(default_factory=_def_fac)  # Skew Dodecapole
+    KS6: TGES = dc.field(default_factory=_def_fac)  # Skew 14-pole
+    KS7: TGES = dc.field(default_factory=_def_fac)  # Skew 16-pole
+    KS8: TGES = dc.field(default_factory=_def_fac)  # Skew 18-pole
+
+
 class MultipoleErrorSpec:
     def __init__(
         self,
@@ -466,7 +504,7 @@ class MultipoleError:
 class MagnetErrorSpec:
     def __init__(
         self,
-        multipole: Union[MultipoleErrorSpec, None] = None,
+        multipole: Union[MultipoleErrorSpec, BendMultipoleErrorSpec, None] = None,
         bending_angle: None = None,
         offset: Union[OffsetSpec2D, OffsetSpec3D, None] = None,
         rot: Union[RotationSpec1D, RotationSpec3D, None] = None,
@@ -479,14 +517,18 @@ class MagnetErrorSpec:
                - Rotation                                - Skew
                |
                - Support
+
+        Notes:
+        - For KQUAD/KSEXT: Use MultipoleErrorSpec (generates SYSTEMATIC_MULTIPOLES)
+        - For CSBEND: Use BendMultipoleErrorSpec (directly sets K1-K8, KS1-KS8)
         """
 
         self._fields = []
 
         if multipole is None:
-            self.multipole = None  # MultipoleErrorSpec()
+            self.multipole = None
         else:
-            assert isinstance(multipole, MultipoleErrorSpec)
+            assert isinstance(multipole, (MultipoleErrorSpec, BendMultipoleErrorSpec))
             self.multipole = multipole
         self._fields.append("multipole")
 
@@ -1117,8 +1159,18 @@ class Errors:
             spec = self.magnets[ei]
 
             magnet_err = MagnetError(elem_name)
-            mpole_err = MultipoleError(n_main_poles=spec.multipole.n_main_poles)
-            magnet_err.set_multipole_error(mpole_err)
+            mpole_err = None  # Will be set for MultipoleErrorSpec
+
+            # Handle multipole spec initialization based on type
+            if spec.multipole is not None:
+                if isinstance(spec.multipole, BendMultipoleErrorSpec):
+                    # For BendMultipoleErrorSpec, we don't create a MultipoleError object
+                    # Instead, we'll directly apply K1-K8, KS1-KS8 parameters later
+                    pass
+                elif isinstance(spec.multipole, MultipoleErrorSpec):
+                    mpole_err = MultipoleError(n_main_poles=spec.multipole.n_main_poles)
+                    magnet_err.set_multipole_error(mpole_err)
+
             self.ring[ei]["magnet"] = magnet_err
 
             for prop_name in spec.fields():
@@ -1127,6 +1179,51 @@ class Errors:
                 if prop_name == "multipole":
                     if spec2 is None:  # No multipole error specified
                         continue
+
+                    # Handle BendMultipoleErrorSpec (direct K-values for CSBEND)
+                    if isinstance(spec2, BendMultipoleErrorSpec):
+                        # Handle main_fse first
+                        if spec2.main_fse.rms > 0.0 or spec2.main_fse.mean != 0.0:
+                            prop_path = [prop_name, "main_fse"]
+                            self._magnets_dist[
+                                (
+                                    spec2.main_fse.rms,
+                                    spec2.main_fse.cutoff,
+                                    spec2.main_fse.mean,
+                                )
+                            ].append((ei, elem_name, prop_path))
+
+                        # Handle K-parameters
+                        for k_param in [
+                            "K1",
+                            "K2",
+                            "K3",
+                            "K4",
+                            "K5",
+                            "K6",
+                            "K7",
+                            "K8",
+                            "KS1",
+                            "KS2",
+                            "KS3",
+                            "KS4",
+                            "KS5",
+                            "KS6",
+                            "KS7",
+                            "KS8",
+                        ]:
+                            tges_spec = getattr(spec2, k_param)
+                            if tges_spec.rms > 0.0 or tges_spec.mean != 0.0:
+                                prop_path = [prop_name, k_param]
+                                self._magnets_dist[
+                                    (tges_spec.rms, tges_spec.cutoff, tges_spec.mean)
+                                ].append((ei, elem_name, prop_path))
+                        continue
+
+                    # Handle MultipoleErrorSpec (SYSTEMATIC_MULTIPOLES for KQUAD/KSEXT)
+                    assert (
+                        mpole_err is not None
+                    ), "mpole_err should be set for MultipoleErrorSpec"
                     for prop2_name in spec2.fields():
                         if prop2_name == "main_errors":
                             main_err_spec_d = getattr(spec2, prop2_name)
@@ -1240,6 +1337,22 @@ class Errors:
                 elem_ind_elem_prop_paths, prop_vals
             ):
                 assert self.ring[ei]["name"] == elem_name
+
+                # Special handling for BendMultipoleErrorSpec (direct K-value application)
+                if (
+                    len(prop_path) == 2
+                    and prop_path[0] == "multipole"
+                    and (prop_path[1].startswith("K") or prop_path[1] == "main_fse")
+                ):
+                    # For CSBEND K-parameters and main_fse, store directly for later application to LTE
+                    # The actual application happens in the LTE generation phase
+                    magnet_err = self.ring[ei]["magnet"]
+                    # Store the K-value or main_fse in a special dict for direct parameter application
+                    if not hasattr(magnet_err, "bend_k_errors"):
+                        magnet_err.bend_k_errors = {}
+                    magnet_err.bend_k_errors[prop_path[1]] = prop_val
+                    continue
+
                 magnet_err = self.ring[ei]["magnet"]
                 obj = magnet_err
                 sec_err_setter = None
@@ -1480,6 +1593,8 @@ class Errors:
         MALIGN_METHOD = 2  # 0: old, 1: entrance-centered, 2: body-centered
         REFERENCE_CORRECTION = 1  # If nonzero, reference trajectory is subtracted from particle trajectories to compensate for inaccuracy in integration.
 
+        elem_names = [v[0] for v in self.elem_defs]
+
         support_type_names = [enum.name for enum in SupportType]
 
         temp_suppl_filepaths = []
@@ -1600,6 +1715,104 @@ class Errors:
             elif err_type == "magnet":
 
                 mpole_err = v.multipole
+
+                # Check if this is a CSBEND with direct K-value errors (BendMultipoleErrorSpec)
+                has_bend_k_errors = hasattr(v, "bend_k_errors") and v.bend_k_errors
+
+                if has_bend_k_errors:
+                    # Handle CSBEND with direct K1-K8, KS1-KS8 parameters
+                    # Apply misalignment errors (offset, roll) first
+                    misaligned = False
+
+                    for coord in "xyz":
+                        prop_val = self.support_offsets[coord][ei]
+                        prop_val += getattr(v.offset, coord)
+                        if prop_val != 0.0:
+                            misaligned = True
+                            mods.append(
+                                dict(
+                                    elem_name=elem_name,
+                                    prop_name=f"d{coord}".upper(),
+                                    prop_val=prop_val,
+                                )
+                            )
+
+                    # Roll for CSBEND (bends use ETILT)
+                    prop_val = self.support_rots["roll"][ei]
+                    prop_val += getattr(v.rot, "roll")
+                    if prop_val != 0.0:
+                        misaligned = True
+                        mods.append(
+                            dict(
+                                elem_name=elem_name,
+                                prop_name="ETILT",
+                                prop_val=prop_val,
+                            )
+                        )
+
+                    if misaligned and (MALIGN_METHOD != 0):
+                        mods.append(
+                            dict(
+                                elem_name=elem_name,
+                                prop_name="MALIGN_METHOD",
+                                prop_val=MALIGN_METHOD,
+                            )
+                        )
+
+                    # Add REFERENCE_CORRECTION for bends
+                    if REFERENCE_CORRECTION != 0:
+                        mods.append(
+                            dict(
+                                elem_name=elem_name,
+                                prop_name="REFERENCE_CORRECTION",
+                                prop_val=REFERENCE_CORRECTION,
+                            )
+                        )
+
+                    # Get design K-values from element definition
+                    elem_def = self.elem_defs[elem_names.index(elem_name)]
+                    prop_str = elem_def[2]  # (elem_name, elem_type, prop_str)
+                    design_props = self.indiv_LTE.parse_elem_properties(prop_str)
+
+                    # Apply main FSE to bending angle if specified
+                    if "main_fse" in v.bend_k_errors:
+                        main_fse = v.bend_k_errors["main_fse"]
+                        if main_fse != 0.0:
+                            mods.append(
+                                dict(
+                                    elem_name=elem_name,
+                                    prop_name="FSE_DIPOLE",
+                                    prop_val=f"{main_fse:.9e}",
+                                )
+                            )
+
+                    # Apply K-value multipole errors additively to CSBEND design parameters
+                    for k_param, k_error in v.bend_k_errors.items():
+                        if k_param == "main_fse":
+                            # Already handled above
+                            continue
+                        # Get design K-value (default to 0.0 if not present)
+                        design_k_val = design_props.get(k_param, 0.0)
+                        # Add error to design value
+                        total_k_val = design_k_val + k_error
+                        if (
+                            total_k_val != design_k_val
+                        ):  # Only modify if there's an actual error
+                            mods.append(
+                                dict(
+                                    elem_name=elem_name,
+                                    prop_name=k_param,  # K1, K2, ..., KS1, KS2, ...
+                                    prop_val=f"{total_k_val:.9e}",
+                                )
+                            )
+
+                    # Skip the normal multipole error handling below
+                    continue
+
+                # Normal handling for MultipoleErrorSpec
+                if mpole_err is None:
+                    # No multipole errors defined for this element
+                    continue
 
                 is_bend = mpole_err.n_main_poles == 2
 
@@ -1764,6 +1977,7 @@ class AbstractFacility:
         error_LTEZIP_name_prefix: str,
         seed: Union[int, None, np.random.Generator] = 42,
         output_folder: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.BaseModel, None] = None,
         spec_filepath: Union[None, Path, str] = None,
     ):
         """
@@ -1776,6 +1990,14 @@ class AbstractFacility:
         as some magnet names may have been changed and cause mismatches during
         response matrix construction when the original design file is used.
 
+        Parameters
+        ----------
+        error_spec : Pydantic BaseModel, optional
+            Error specification Pydantic model (e.g., NSLS2ErrorSpecModel).
+            If None, facility-specific default will be created.
+        spec_filepath : Path or str, optional
+            DEPRECATED: Path to YAML file for spec override. Use error_spec instead.
+
         TODO: Must add "split-element" handling for multipole and alignment errors.
         """
         assert isinstance(design_LTE, ltemanager.Lattice)
@@ -1786,6 +2008,10 @@ class AbstractFacility:
         else:
             self.output_folder = Path(output_folder)
 
+        # Store error_spec (will be set by subclass if None)
+        self.error_spec = error_spec
+
+        # Legacy YAML-based spec override (deprecated but kept for backward compatibility)
         if spec_filepath is None:
             self.spec_filepath = None
             self.spec_override = None
@@ -1820,6 +2046,16 @@ class AbstractFacility:
             self.err.generate_LTE_file_wo_errors(
                 output_LTEZIP_filepath=self.indiv_design_LTEZIP_filepath
             )
+        elif not self.indiv_design_LTEZIP_filepath.exists():
+            src_filepath = Path(self.design_LTE.LTEZIP_filepath)
+            if src_filepath.is_file():
+                # Just create a copy of the design LTEZIP file
+                shutil.copyfile(
+                    src_filepath,
+                    self.indiv_design_LTEZIP_filepath,
+                )
+            else:
+                self.design_LTE.zip_lte(self.indiv_design_LTEZIP_filepath)
 
     def _unique_rand_int_generator(self):
 
@@ -1895,8 +2131,257 @@ class AbstractFacility:
 
         return output_LTEZIP_filepath
 
+    @staticmethod
+    def _tges_from_model(tges_model: error_specs.TGESModel) -> TGES:
+        """Convert Pydantic TGESModel to TGES object."""
+        return TGES(
+            rms=tges_model.rms,
+            rms_unit=tges_model.rms_unit,
+            cutoff=tges_model.cutoff,
+            mean=tges_model.mean,
+        )
+
+    def _offset_spec_2d_from_model(
+        self, offset_model: error_specs.OffsetSpecModel
+    ) -> OffsetSpec2D:
+        """Convert Pydantic OffsetSpecModel to OffsetSpec2D."""
+        return OffsetSpec2D(
+            x=self._tges_from_model(offset_model.x),
+            y=self._tges_from_model(offset_model.y),
+        )
+
+    def _gain_spec_from_model(self, gain_model: error_specs.GainSpecModel) -> GainSpec:
+        """Convert Pydantic GainSpecModel to GainSpec."""
+        return GainSpec(
+            x=self._tges_from_model(gain_model.x),
+            y=self._tges_from_model(gain_model.y),
+        )
+
+    def _rotation_spec_1d_from_model(
+        self, rot_model: error_specs.RotationSpecModel
+    ) -> RotationSpec1D:
+        """Convert Pydantic RotationSpecModel to RotationSpec1D."""
+        return RotationSpec1D(roll=self._tges_from_model(rot_model.roll))
+
+    def _noise_spec_from_model(
+        self, noise_model: error_specs.NoiseSpecModel
+    ) -> NoiseSpec:
+        """Convert Pydantic NoiseSpecModel to NoiseSpec."""
+        return NoiseSpec(
+            x=self._tges_from_model(noise_model.x),
+            y=self._tges_from_model(noise_model.y),
+        )
+
+    def _create_bpm_error_spec(
+        self, bpm_model: error_specs.BPMErrorSpecModel
+    ) -> BPMErrorSpec:
+        """Convert Pydantic BPM model to BPMErrorSpec."""
+        return BPMErrorSpec(
+            offset=self._offset_spec_2d_from_model(bpm_model.offset),
+            gain=self._gain_spec_from_model(bpm_model.gain),
+            rot=self._rotation_spec_1d_from_model(bpm_model.rot),
+            tbt_noise=self._noise_spec_from_model(bpm_model.tbt_noise),
+            co_noise=self._noise_spec_from_model(bpm_model.co_noise),
+        )
+
+    def _bend_multipole_spec_from_model(
+        self, multipole_model: error_specs.BendMultipoleErrorSpecModel
+    ) -> BendMultipoleErrorSpec:
+        """Convert Pydantic BendMultipoleErrorSpecModel to BendMultipoleErrorSpec."""
+        return BendMultipoleErrorSpec(
+            K1=self._tges_from_model(multipole_model.K1),
+            K2=self._tges_from_model(multipole_model.K2),
+            K3=self._tges_from_model(multipole_model.K3),
+            K4=self._tges_from_model(multipole_model.K4),
+            K5=self._tges_from_model(multipole_model.K5),
+            K6=self._tges_from_model(multipole_model.K6),
+            K7=self._tges_from_model(multipole_model.K7),
+            K8=self._tges_from_model(multipole_model.K8),
+            KS1=self._tges_from_model(multipole_model.KS1),
+            KS2=self._tges_from_model(multipole_model.KS2),
+            KS3=self._tges_from_model(multipole_model.KS3),
+            KS4=self._tges_from_model(multipole_model.KS4),
+            KS5=self._tges_from_model(multipole_model.KS5),
+            KS6=self._tges_from_model(multipole_model.KS6),
+            KS7=self._tges_from_model(multipole_model.KS7),
+            KS8=self._tges_from_model(multipole_model.KS8),
+        )
+
+    def _create_magnet_error_spec(
+        self,
+        magnet_model: Union[
+            error_specs.BendErrorSpecModel,
+            error_specs.CsBendErrorSpecModel,
+            error_specs.QuadErrorSpecModel,
+            error_specs.SextErrorSpecModel,
+            error_specs.OctErrorSpecModel,
+        ],
+        n_main_poles: int,
+        main_normal: bool,
+        multipole_spec: Union[MultipoleErrorSpec, BendMultipoleErrorSpec, None] = None,
+    ) -> MagnetErrorSpec:
+        """Convert Pydantic magnet model to MagnetErrorSpec.
+
+        Parameters
+        ----------
+        magnet_model : Pydantic magnet error spec model
+        n_main_poles : int
+            Number of main poles for multipole error spec
+        main_normal : bool
+            Whether main multipole is normal (vs skew)
+        multipole_spec : MultipoleErrorSpec or BendMultipoleErrorSpec, optional
+            Pre-configured multipole spec (for secondary multipoles or bend multipoles).
+            If None, creates basic spec with only main FSE.
+            For CsBendErrorSpecModel with multipole field, pass BendMultipoleErrorSpec.
+        """
+        # Handle CsBendErrorSpecModel with BendMultipoleErrorSpec
+        if isinstance(magnet_model, error_specs.CsBendErrorSpecModel):
+            if magnet_model.multipole is not None:
+                # Use BendMultipoleErrorSpec from model
+                bend_multipole_spec = self._bend_multipole_spec_from_model(
+                    magnet_model.multipole
+                )
+            else:
+                # No multipole errors specified, create empty spec
+                bend_multipole_spec = BendMultipoleErrorSpec()
+
+            # Set main FSE if specified
+            if magnet_model.multipole_main_fse is not None:
+                bend_multipole_spec.main_fse = self._tges_from_model(
+                    magnet_model.multipole_main_fse
+                )
+
+            return MagnetErrorSpec(
+                multipole=bend_multipole_spec,
+                offset=self._offset_spec_2d_from_model(magnet_model.offset),
+                rot=RotationSpec1D(roll=self._tges_from_model(magnet_model.roll)),
+            )
+
+        # Handle regular magnets (Bend, Quad, Sext, Oct) with MultipoleErrorSpec
+        if multipole_spec is None:
+            multipole_spec = MultipoleErrorSpec(n_main_poles, main_normal)
+
+        # Set main FSE if specified
+        # BendErrorSpecModel has optional multipole_main_fse
+        # QuadErrorSpecModel, SextErrorSpecModel, OctErrorSpecModel have required main_fse
+        if hasattr(magnet_model, "main_fse"):
+            # Quad/Sext/Oct models
+            if magnet_model.main_fse.rms != 0.0:
+                multipole_spec.main_fse = self._tges_from_model(magnet_model.main_fse)
+        elif (
+            hasattr(magnet_model, "multipole_main_fse")
+            and magnet_model.multipole_main_fse is not None
+        ):
+            # Bend model
+            multipole_spec.main_fse = self._tges_from_model(
+                magnet_model.multipole_main_fse
+            )
+
+        return MagnetErrorSpec(
+            multipole=multipole_spec,
+            offset=self._offset_spec_2d_from_model(magnet_model.offset),
+            rot=RotationSpec1D(roll=self._tges_from_model(magnet_model.roll)),
+        )
+
     def cleanup_tempdirs(self):
         self.design_LTE.remove_tempdir()
+
+    def validate_skew_quad_tilt(
+        self, expected_tilt_deg: float = 45.0, tolerance_deg: float = 5.0
+    ):
+        """
+        Validate that skew quadrupoles have expected TILT rotation in the LTE file.
+
+        This check is critical for linear optics correction to work properly.
+        Skew quads must be rotated to provide coupling correction. If the design
+        LTE file is missing these TILT values, the correction will fail silently.
+
+        Uses facility-specific get_quad_names() method to identify which quads
+        are intended to be skew quads, then validates they have proper TILT defined
+        in the LTE file.
+
+        Parameters
+        ----------
+        expected_tilt_deg : float, optional
+            Expected TILT angle in degrees (default: 45.0)
+        tolerance_deg : float, optional
+            Tolerance for deviation in degrees (default: 5.0)
+
+        Raises
+        ------
+        ValueError
+            If skew quads are missing proper TILT rotation or TILT definitions
+        """
+        # Get skew quad names from facility database
+        _d = self.fsdb.get_quad_names(flat_skew_quad_names=True)
+        skew_quad_names = _d["skew"]
+
+        if len(skew_quad_names) == 0:
+            # No skew quads in this lattice, nothing to check
+            return
+
+        LTE = self.design_LTE
+        expected_tilt_rad = np.deg2rad(expected_tilt_deg)
+        tolerance_rad = np.deg2rad(tolerance_deg)
+
+        # Parse LTE text to find TILT values for skew quads
+        lte_text = LTE.LTE_text
+
+        # Check each skew quad for TILT definition
+        missing_tilt = []
+        wrong_tilt = []
+
+        for sq_name in skew_quad_names:
+            # Look for this quad's definition in the LTE file
+            # Pattern: quad_name: KQUAD, ... TILT=value, ...
+            import re
+
+            pattern = rf"{sq_name}\s*:\s*(?:K)?QUAD[^&]*TILT\s*=\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)"
+            match = re.search(pattern, lte_text, re.IGNORECASE)
+
+            if not match:
+                missing_tilt.append(sq_name)
+            else:
+                tilt_val = float(match.group(1))
+                deviation = abs(tilt_val - expected_tilt_rad)
+                if deviation > tolerance_rad:
+                    wrong_tilt.append((sq_name, tilt_val))
+
+        # Check results
+        if missing_tilt or wrong_tilt:
+            error_msg = "Skew quad TILT validation failed!\n\n"
+
+            if missing_tilt:
+                error_msg += (
+                    f"  {len(missing_tilt)} skew quads are missing TILT definitions:\n"
+                )
+                for name in missing_tilt[:10]:  # Show first 10
+                    error_msg += f"    - {name}\n"
+                if len(missing_tilt) > 10:
+                    error_msg += f"    ... and {len(missing_tilt) - 10} more\n"
+                error_msg += "\n"
+
+            if wrong_tilt:
+                error_msg += (
+                    f"  {len(wrong_tilt)} skew quads have incorrect TILT values:\n"
+                )
+                for name, tilt_val in wrong_tilt[:10]:  # Show first 10
+                    tilt_deg = np.rad2deg(tilt_val)
+                    dev_deg = np.rad2deg(tilt_val - expected_tilt_rad)
+                    error_msg += f"    - {name}: TILT={tilt_deg:.2f}° (deviation: {dev_deg:+.2f}°)\n"
+                if len(wrong_tilt) > 10:
+                    error_msg += f"    ... and {len(wrong_tilt) - 10} more\n"
+                error_msg += "\n"
+
+            error_msg += (
+                f"  Expected: TILT = {expected_tilt_deg:.0f}° ± {tolerance_deg:.0f}°\n"
+            )
+            error_msg += f"  Total skew quads: {len(skew_quad_names)}\n"
+            error_msg += "\n"
+            error_msg += "  This is a critical error - linear optics correction REQUIRES proper skew quad rotation!\n"
+            error_msg += "  Please fix the design LTE file before proceeding."
+
+            raise ValueError(error_msg)
 
 
 class NSLS2(AbstractFacility):
@@ -1908,6 +2393,7 @@ class NSLS2(AbstractFacility):
         error_LTEZIP_name_prefix: str,
         seed: Union[int, None, np.random.Generator] = 42,
         output_folder: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.NSLS2ErrorSpecModel, None] = None,
         spec_filepath: Union[None, Path, str] = None,
     ):
 
@@ -1918,8 +2404,13 @@ class NSLS2(AbstractFacility):
             error_LTEZIP_name_prefix,
             seed=seed,
             output_folder=output_folder,
+            error_spec=error_spec,
             spec_filepath=spec_filepath,
         )
+
+        # Create default error spec if not provided
+        if self.error_spec is None:
+            self.error_spec = error_specs.NSLS2ErrorSpecModel()
 
         # "fsdb" stands for "(f)acility-(s)pecific (d)ata(b)ase"
         self.fsdb = ltemanager.NSLS2(self.err.indiv_LTE, lattice_type=self.lattice_type)
@@ -1950,8 +2441,8 @@ class NSLS2(AbstractFacility):
             elem_inds["QUAD"] = np.sort(
                 np.hstack(
                     [
-                        LTE.get_elem_inds_from_regex("^Q[HL]\w+$"),
-                        LTE.get_elem_inds_from_regex("^QM1\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
                     ]
                 )
             )
@@ -1960,9 +2451,9 @@ class NSLS2(AbstractFacility):
             elem_inds["QUAD"] = np.sort(
                 np.hstack(
                     [
-                        LTE.get_elem_inds_from_regex("^Q[HL]\w+$"),
-                        LTE.get_elem_inds_from_regex("^QM1\w+$"),
-                        LTE.get_elem_inds_from_regex("^Q[DF]C26\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[DF]C26\w+$"),
                     ]
                 )
             )
@@ -1970,20 +2461,20 @@ class NSLS2(AbstractFacility):
         else:
             raise NotImplementedError
 
-        elem_inds["HIQUAD"] = LTE.get_elem_inds_from_regex("^QM2\w+$")
+        elem_inds["HIQUAD"] = LTE.get_elem_inds_from_regex(r"^QM2\w+$")
         assert len(elem_inds["HIQUAD"]) == 60
 
         elem_inds["SEXT"] = np.sort(
             np.hstack(
                 [
-                    LTE.get_elem_inds_from_regex("^S[HL]\w+$"),
-                    LTE.get_elem_inds_from_regex("^SM1\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^S[HL]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^SM1\w+$"),
                 ]
             )
         )
         assert len(elem_inds["SEXT"]) == 240
 
-        elem_inds["HISEXT"] = LTE.get_elem_inds_from_regex("^SM2\w+$")
+        elem_inds["HISEXT"] = LTE.get_elem_inds_from_regex(r"^SM2\w+$")
         assert len(elem_inds["HISEXT"]) == 30
 
         return elem_inds
@@ -2107,77 +2598,74 @@ class NSLS2(AbstractFacility):
         return mp_err_specs
 
     def register_BPMs(self):
-
-        # Some (not all) based on NSLS-II PDR Table 3.1.4
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
-        gain_spec = TGES(rms=5e-2, rms_unit="")
-        tbt_noise_spec = TGES(rms=3e-6, rms_unit="m")
-        co_noise_spec = TGES(rms=0.1e-6, rms_unit="m")
-
-        spec = BPMErrorSpec(
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            gain=GainSpec(x=gain_spec, y=gain_spec),
-            rot=RotationSpec1D(roll=TGES(rms=0.2e-3, rms_unit="rad")),
-            tbt_noise=NoiseSpec(x=tbt_noise_spec, y=tbt_noise_spec),
-            co_noise=NoiseSpec(x=co_noise_spec, y=co_noise_spec),
-        )
-
+        """Register BPM errors using Pydantic spec (based on NSLS-II PDR Table 3.1.4)."""
+        spec = self._create_bpm_error_spec(self.error_spec.bpms)
         self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
 
     def register_bends(self):
-
-        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
-        roll_spec = TGES(rms=0.5e-3, rms_unit="rad")
-        n_main_poles = 2
-        main_normal = True
-
-        spec = MagnetErrorSpec(
-            multipole=MultipoleErrorSpec(n_main_poles, main_normal),
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            rot=RotationSpec1D(roll=roll_spec),
+        """Register bend magnet errors using Pydantic spec (based on NSLS-II PDR Table 3.1.8)."""
+        spec = self._create_magnet_error_spec(
+            self.error_spec.bends,
+            n_main_poles=2,
+            main_normal=True,
         )
-
         self.err.register_magnets(self.elem_inds["BEND"], err_spec=spec)
 
     def register_quads_sexts(self):
-
+        """Register quad and sext magnet errors using Pydantic spec."""
         mp_err_specs = self.get_multipole_err_specs()
 
-        for mag_type, v in mp_err_specs.items():
-            # Based on NSLS-II PDR Table 3.1.9
-            if "QUAD" in mag_type:
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=2.5e-4))
-            elif "SEXT" in mag_type:
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=5e-4))
-            else:
-                raise ValueError(mag_type)
-            v.set_main_error_spec(main_err_spec)
+        # Get Pydantic quads_sexts dict
+        quads_sexts_spec = self.error_spec.quads_sexts
 
-        # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
-        offset_spec = TGES(rms=30e-6, rms_unit="m")
-        roll_spec = TGES(rms=0.2e-3, rms_unit="rad")
-        for mp_type, mp_err_spec in mp_err_specs.items():
-            spec = MagnetErrorSpec(
-                multipole=mp_err_spec,
-                offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-                rot=RotationSpec1D(roll=roll_spec),
+        for mag_type, mp_err_spec in mp_err_specs.items():
+            # Get the Pydantic model for this magnet type
+            # Map mag_type to Pydantic spec key
+            if mag_type in quads_sexts_spec:
+                magnet_model = quads_sexts_spec[mag_type]
+            else:
+                raise ValueError(
+                    f"Magnet type {mag_type} not found in quads_sexts spec"
+                )
+
+            # Set main FSE from Pydantic model (based on NSLS-II PDR Table 3.1.9)
+            if magnet_model.main_fse != 0.0:
+                main_err_spec = MainMultipoleErrorSpec(
+                    fse=TGES(rms=magnet_model.main_fse)
+                )
+                mp_err_spec.set_main_error_spec(main_err_spec)
+
+            # Create full magnet error spec using helper
+            spec = self._create_magnet_error_spec(
+                magnet_model,
+                n_main_poles=mp_err_spec.n_main_poles,
+                main_normal=mp_err_spec.main_normal,
+                multipole_spec=mp_err_spec,
             )
 
-            self.err.register_magnets(self.elem_inds[mp_type], err_spec=spec)
+            self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
 
     def register_girders(self):
-
+        """Register girder support errors using Pydantic spec (based on NSLS-II PDR Table 3.1.8)."""
         fsdb = self.fsdb
 
         gs_inds, ge_inds = fsdb.get_girder_marker_pairs()
 
-        # Based on NSLS-II PDR Table 3.1.8
-        offset_spec = TGES(rms=100e-6, rms_unit="m")
+        # Get girder spec from Pydantic model
+        girder_model = self.error_spec.girders
+
         spec = SupportErrorSpec1DRoll(
-            us_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-            ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-            rot=RotationSpec1D(roll=TGES(rms=0.5e-3, rms_unit="rad")),
+            us_offset=OffsetSpec3D(
+                x=self._tges_from_model(girder_model.us_offset.x),
+                y=self._tges_from_model(girder_model.us_offset.y),
+                z=self._tges_from_model(girder_model.us_offset.z),
+            ),
+            ds_offset=OffsetSpec3D(
+                x=self._tges_from_model(girder_model.ds_offset.x),
+                y=self._tges_from_model(girder_model.ds_offset.y),
+                z=self._tges_from_model(girder_model.ds_offset.z),
+            ),
+            rot=RotationSpec1D(roll=self._tges_from_model(girder_model.roll)),
         )
 
         self.err.register_supports(
@@ -2195,7 +2683,11 @@ class NSLS2U(AbstractFacility):
         seed: Union[int, None, np.random.Generator] = 42,
         output_folder: Union[None, Path, str] = None,
         spec_filepath: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.NSLS2UErrorSpecModel, None] = None,
     ):
+        # Create default error spec if not provided
+        if error_spec is None:
+            error_spec = error_specs.NSLS2UErrorSpecModel()
 
         super().__init__(
             design_LTE,
@@ -2205,6 +2697,7 @@ class NSLS2U(AbstractFacility):
             seed=seed,
             output_folder=output_folder,
             spec_filepath=spec_filepath,
+            error_spec=error_spec,
         )
 
         # "fsdb" stands for "(f)acility-(s)pecific (d)ata(b)ase"
@@ -2245,8 +2738,8 @@ class NSLS2U(AbstractFacility):
             elem_inds["EM_QUAD"] = np.sort(
                 np.hstack(
                     [
-                        LTE.get_elem_inds_from_regex("^Q[SL]\w+$"),
-                        LTE.get_elem_inds_from_regex("^Q[DF]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[SL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^Q[DF]\w+$"),
                     ]
                 )
             )
@@ -2257,8 +2750,8 @@ class NSLS2U(AbstractFacility):
         elem_inds["SEXT"] = np.sort(
             np.hstack(
                 [
-                    LTE.get_elem_inds_from_regex("^S[HL]\w+$"),
-                    LTE.get_elem_inds_from_regex("^S[DF]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^S[HL]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^S[DF]\w+$"),
                 ]
             )
         )
@@ -2279,7 +2772,7 @@ class NSLS2U(AbstractFacility):
         elem_inds["OCT"] = np.sort(
             np.hstack(
                 [
-                    LTE.get_elem_inds_from_regex("^OCT\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^OCT\w+$"),
                 ]
             )
         )
@@ -2359,135 +2852,94 @@ class NSLS2U(AbstractFacility):
         return mp_err_specs
 
     def register_BPMs(self):
-
-        # Some (not all) based on NSLS-II PDR Table 3.1.4
-        offset_spec = TGES(rms=100e-6, rms_unit="m", cutoff=1.0)
-        gain_spec = TGES(rms=5e-2, rms_unit="", cutoff=1.0)
-        tbt_noise_spec = TGES(rms=3e-6, rms_unit="m", cutoff=1.0)
-        co_noise_spec = TGES(rms=0.1e-6, rms_unit="m", cutoff=1.0)
-
-        if self.spec_override:
-            ov_spec = self.spec_override.get("bpms", None)
-            if ov_spec:
-                ov_d = ov_spec.get("offset", None)
-                if ov_d:
-                    offset_spec = TGES(**ov_d)
-
-        spec = BPMErrorSpec(
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            gain=GainSpec(x=gain_spec, y=gain_spec),
-            rot=RotationSpec1D(roll=TGES(rms=0.2e-3, rms_unit="rad", cutoff=1.0)),
-            tbt_noise=NoiseSpec(x=tbt_noise_spec, y=tbt_noise_spec),
-            co_noise=NoiseSpec(x=co_noise_spec, y=co_noise_spec),
-        )
-
+        spec = self._create_bpm_error_spec(self.error_spec.bpms)
         self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
 
     def register_bends(self):
-
-        if False:
-            offset_spec = TGES(rms=50e-6, rms_unit="m", cutoff=1.0)
-            roll_spec = TGES(rms=0.25e-3, rms_unit="rad", cutoff=1.0)
-        else:
-            offset_spec = TGES(rms=15e-6, rms_unit="m", cutoff=1.0)
-            roll_spec = TGES(rms=0.1e-3, rms_unit="rad", cutoff=1.0)
-
-        if self.spec_override:
-            ov_spec = self.spec_override.get("bends", None)
-            if ov_spec:
-                ov_d = ov_spec.get("offset", None)
-                if ov_d:
-                    offset_spec = TGES(**ov_d)
-
-                ov_d = ov_spec.get("roll", None)
-                if ov_d:
-                    roll_spec = TGES(**ov_d)
-
         mp_err_specs = self.get_multipole_err_specs()
-        main_err_specs = {4: MainMultipoleErrorSpec(fse=TGES(rms=1e-3, cutoff=1.0))}
+
+        # PMQ uses bend's multipole_main_fse field
+        main_err_specs = {
+            4: MainMultipoleErrorSpec(
+                fse=self._tges_from_model(self.error_spec.bends.multipole_main_fse)
+            )
+        }
         mp_err_specs["PMQ"].set_main_error_spec(main_err_specs)
 
-        spec = MagnetErrorSpec(
-            multipole=mp_err_specs["PMQ"],
-            offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-            rot=RotationSpec1D(roll=roll_spec),
+        spec = self._create_magnet_error_spec(
+            self.error_spec.bends,
+            n_main_poles=4,
+            main_normal=True,
+            multipole_spec=mp_err_specs["PMQ"],
         )
 
         self.err.register_magnets(self.elem_inds["PMQ"], err_spec=spec)
 
     def register_quads_nonlin_magnets(self):
-
         mp_err_specs = self.get_multipole_err_specs()
 
         excl_mag_types = ["PMQ"]
 
+        # Set main FSE for each magnet type from Pydantic spec
         for mag_type, v in mp_err_specs.items():
-            if mag_type == "EM_QUAD":
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=2.5e-4, cutoff=1.0))
-            elif mag_type == "SEXT":
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=5e-4, cutoff=1.0))
-            elif mag_type == "OCT":
-                main_err_spec = MainMultipoleErrorSpec(fse=TGES(rms=0.0, cutoff=1.0))
-            elif mag_type in excl_mag_types:
+            if mag_type in excl_mag_types:
                 continue
-            else:
-                raise ValueError(mag_type)
+
+            # Get the magnet spec from Pydantic model
+            magnet_spec = self.error_spec.quads_nonlin_magnets.get(mag_type)
+            if magnet_spec is None:
+                raise ValueError(f"Missing spec for magnet type: {mag_type}")
+
+            main_err_spec = MainMultipoleErrorSpec(
+                fse=self._tges_from_model(magnet_spec.main_fse)
+            )
             v.set_main_error_spec(main_err_spec)
 
-        def_offset_spec = TGES(rms=30e-6, rms_unit="m", cutoff=1.0)
-        def_roll_spec = TGES(rms=0.2e-3, rms_unit="rad", cutoff=1.0)
-
-        if self.spec_override:
-            ov_spec = self.spec_override.get("quads_nonlin_magnets", None)
-        else:
-            ov_spec = None
-
+        # Register magnets with error specs
         for mag_type, mp_err_spec in mp_err_specs.items():
             if mag_type in excl_mag_types:
                 continue
 
-            offset_spec = def_offset_spec
-            roll_spec = def_roll_spec
-            if ov_spec:
-                ov_d = ov_spec.get(mag_type, None)
-                if ov_d:
-                    ov_d2 = ov_d.get("offset", None)
-                    if ov_d2:
-                        offset_spec = TGES(**ov_d2)
+            magnet_spec = self.error_spec.quads_nonlin_magnets[mag_type]
 
-                    ov_d2 = ov_d.get("roll", None)
-                    if ov_d2:
-                        roll_spec = TGES(**ov_d2)
+            # Determine n_main_poles and main_normal from magnet type
+            if mag_type == "EM_QUAD":
+                n_main_poles = 4
+                main_normal = True
+            elif mag_type == "SEXT":
+                n_main_poles = 6
+                main_normal = True
+            elif mag_type == "OCT":
+                n_main_poles = 8
+                main_normal = True
+            else:
+                raise ValueError(f"Unknown magnet type: {mag_type}")
 
-            spec = MagnetErrorSpec(
-                multipole=mp_err_spec,
-                offset=OffsetSpec2D(x=offset_spec, y=offset_spec),
-                rot=RotationSpec1D(roll=roll_spec),
+            spec = self._create_magnet_error_spec(
+                magnet_spec,
+                n_main_poles=n_main_poles,
+                main_normal=main_normal,
+                multipole_spec=mp_err_spec,
             )
 
             self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
 
     def register_girders(self):
-
         fsdb = self.fsdb
-
         gs_inds, ge_inds = fsdb.get_girder_marker_pairs()
 
-        offset_spec = TGES(rms=100e-6, rms_unit="m", cutoff=1.0)
-        roll_spec = TGES(rms=0.5e-3, rms_unit="rad", cutoff=1.0)
-        chain_constraints = None
+        # Get offset and roll specs from Pydantic model
+        us_offset_x = self._tges_from_model(self.error_spec.girders.us_offset.x)
+        us_offset_y = self._tges_from_model(self.error_spec.girders.us_offset.y)
+        ds_offset_x = self._tges_from_model(self.error_spec.girders.ds_offset.x)
+        ds_offset_y = self._tges_from_model(self.error_spec.girders.ds_offset.y)
+        roll_spec = self._tges_from_model(self.error_spec.girders.roll)
 
+        # Check for chain_constraints (kept for backward compatibility with spec_override)
+        chain_constraints = None
         if self.spec_override:
             ov_spec = self.spec_override.get("girders", None)
             if ov_spec:
-                ov_d = ov_spec.get("offset", None)
-                if ov_d:
-                    offset_spec = TGES(**ov_d)
-
-                ov_d = ov_spec.get("roll", None)
-                if ov_d:
-                    roll_spec = TGES(**ov_d)
-
                 ov_list = ov_spec.get("chain_constraints", None)
                 if ov_list:
                     assert isinstance(ov_list, list)
@@ -2495,8 +2947,8 @@ class NSLS2U(AbstractFacility):
 
         if chain_constraints is None:
             spec = SupportErrorSpec1DRoll(
-                us_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
-                ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
+                us_offset=OffsetSpec3D(x=us_offset_x, y=us_offset_y, z=None),
+                ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
                 rot=RotationSpec1D(roll=roll_spec),
             )
 
@@ -2504,8 +2956,8 @@ class NSLS2U(AbstractFacility):
                 SupportType.girder, gs_inds, ge_inds, spec, overwrite=False
             )
         else:
+            # Handle chained girders (advanced feature)
             chained_gs_inds = []
-
             gs_inds_list = gs_inds.tolist()
 
             for _d in chain_constraints:
@@ -2519,7 +2971,7 @@ class NSLS2U(AbstractFacility):
                         chained_us_offset=OffsetSpec3D(
                             x=TGES(**x_spec), y=TGES(**y_spec), z=None
                         ),
-                        ds_offset=OffsetSpec3D(x=offset_spec, y=offset_spec, z=None),
+                        ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
                         rot=RotationSpec1D(roll=roll_spec),
                     )
 
@@ -2539,6 +2991,11 @@ class NSLS2U(AbstractFacility):
                     non_chained_ge_inds.append(ge_i)
 
             if non_chained_gs_inds != []:
+                spec = SupportErrorSpec1DRoll(
+                    us_offset=OffsetSpec3D(x=us_offset_x, y=us_offset_y, z=None),
+                    ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
+                    rot=RotationSpec1D(roll=roll_spec),
+                )
                 self.err.register_supports(
                     SupportType.girder,
                     non_chained_gs_inds,
@@ -2546,6 +3003,308 @@ class NSLS2U(AbstractFacility):
                     spec,
                     overwrite=False,
                 )
+
+
+class NSLS2CB(AbstractFacility):
+    def __init__(
+        self,
+        design_LTE: ltemanager.Lattice,
+        lattice_type: str,
+        indiv_design_LTEZIP_filepath: Union[Path, str],
+        error_LTEZIP_name_prefix: str,
+        seed: Union[int, None, np.random.Generator] = 42,
+        output_folder: Union[None, Path, str] = None,
+        spec_filepath: Union[None, Path, str] = None,
+        error_spec: Union[error_specs.NSLS2CBErrorSpecModel, None] = None,
+    ):
+        # Create default error spec if not provided
+        if error_spec is None:
+            error_spec = error_specs.NSLS2CBErrorSpecModel()
+
+        super().__init__(
+            design_LTE,
+            lattice_type,
+            indiv_design_LTEZIP_filepath,
+            error_LTEZIP_name_prefix,
+            seed=seed,
+            output_folder=output_folder,
+            spec_filepath=spec_filepath,
+            error_spec=error_spec,
+        )
+
+        # "fsdb" stands for "(f)acility-(s)pecific (d)ata(b)ase"
+        self.fsdb = ltemanager.NSLS2CB(
+            self.err.indiv_LTE, lattice_type=self.lattice_type
+        )
+
+        self.elem_inds = self._get_elem_inds()
+
+        self.register_BPMs()
+        self.register_bends()
+        self.register_complex_bends()
+        self.register_quads_sexts()
+        self.register_girders()
+
+    def _get_elem_inds(self):
+
+        LTE = self.err.indiv_LTE
+        fsdb = self.fsdb
+
+        elem_inds = {}
+
+        _inds = fsdb.get_regular_BPM_elem_inds()
+        assert len(_inds["x"]) == len(_inds["y"]) == 180
+        assert np.all(_inds["x"] == _inds["y"])
+        elem_inds["BPM"] = _inds["x"]
+
+        elem_inds["BEND"] = fsdb.get_bend_elem_inds()
+        assert (
+            len(elem_inds["BEND"]) == 60 - 2
+        )  # Two dipoles have been converted to complex bends
+
+        elem_inds["COMPLEX_BEND"] = fsdb.get_complex_bend_elem_inds()
+        assert len(elem_inds["COMPLEX_BEND"]) == 3 * 7 * 2
+
+        if self.lattice_type in ("20251120_bare_CB", "20260107_bare_CB_highG"):
+            elem_inds["QUAD"] = np.sort(
+                np.hstack(
+                    [
+                        LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+                        LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
+                    ]
+                )
+            )
+            assert len(elem_inds["QUAD"]) == 240
+        # elif self.lattice_type == "C26_double_mini_beta":
+        #     elem_inds["QUAD"] = np.sort(
+        #         np.hstack(
+        #             [
+        #                 LTE.get_elem_inds_from_regex(r"^Q[HL]\w+$"),
+        #                 LTE.get_elem_inds_from_regex(r"^QM1\w+$"),
+        #                 LTE.get_elem_inds_from_regex(r"^Q[DF]C26\w+$"),
+        #             ]
+        #         )
+        #     )
+        #     assert len(elem_inds["QUAD"]) == 240 + 3
+        else:
+            raise NotImplementedError
+
+        elem_inds["HIQUAD"] = LTE.get_elem_inds_from_regex(r"^QM2\w+$")
+        assert len(elem_inds["HIQUAD"]) == 60
+
+        elem_inds["SEXT"] = np.sort(
+            np.hstack(
+                [
+                    LTE.get_elem_inds_from_regex(r"^S[HL]\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^SM1\w+$"),
+                    LTE.get_elem_inds_from_regex(r"^CBSH\w+$"),
+                ]
+            )
+        )
+        assert len(elem_inds["SEXT"]) == 240
+
+        elem_inds["HISEXT"] = LTE.get_elem_inds_from_regex(r"^SM2\w+$")
+        assert len(elem_inds["HISEXT"]) == 30
+
+        return elem_inds
+
+    @staticmethod
+    def get_multipole_err_specs():
+        """
+        Based on "~/git_repos/nsls2scripts3/SDDS_multipoles/mpole_err_spec/CD3_mpole_spec.txt"
+
+        Same data in the following SDDS files under "~/git_repos/nsls2scripts3/SDDS_multipoles/mpole_err_spec"
+
+        "quad" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.QUAD
+        CD3-RDMMULT.QUAD
+
+        "QM2" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.HIQUAD
+        CD3-RDMMULT.HIQUAD
+
+        "sext" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.SEXT
+        CD3-RDMMULT.SEXT
+
+        "SM2" in "CD3_mpole_spec.txt":
+        CD3-SYSMULT.HISEXT
+        CD3-RDMMULT.HISEXT
+
+        ELEGANT: normal = "an", skew = "bn"
+        Tracy: normal = "Bn", skew = "An"
+        (Note that the sign of "An" is opposite from the sign of "bn".)
+        """
+
+        mp_err_specs = {}
+
+        common = dict(secondary_ref_radius=25e-3, secondary_cutoff=2.0)  # [m]
+
+        # QUAD
+        n_main_poles = 4
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(6, 2e-4)
+        spec.set_secondary_skew(6, 2e-4)
+        spec.set_secondary_norm(8, 2e-4)
+        spec.set_secondary_skew(8, 1e-4)
+        for n_poles in [10, 14, 16, 18]:
+            spec.set_secondary_norm(n_poles, 1e-4)
+            spec.set_secondary_skew(n_poles, 1e-4)
+        for n_poles in [22, 24, 26, 30]:
+            spec.set_secondary_norm(n_poles, 0.5e-4)
+            spec.set_secondary_skew(n_poles, 0.5e-4)
+        for n_poles in [12, 20, 28]:
+            spec.set_secondary_norm(n_poles, 0.0, systematic=3e-4)
+            spec.set_secondary_skew(n_poles, 1e-4)
+        mp_err_specs["QUAD"] = spec
+
+        # HIQUAD (QM2)
+        n_main_poles = 4
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(6, 3e-4)
+        spec.set_secondary_skew(6, 1.5e-4)
+        spec.set_secondary_norm(8, 2e-4)
+        spec.set_secondary_skew(8, 1e-4)
+        spec.set_secondary_norm(10, 0.3e-4)
+        spec.set_secondary_skew(10, 0.1e-4)
+        for n_poles in [14, 16, 18, 22, 24, 26, 30]:
+            spec.set_secondary_norm(n_poles, 0.1e-4)
+            spec.set_secondary_skew(n_poles, 0.11e-4)
+        for n_poles, systematic in [(12, 0.5e-4), (20, 0.5e-4), (28, 0.1e-4)]:
+            spec.set_secondary_norm(n_poles, 0.0, systematic=systematic)
+            spec.set_secondary_skew(n_poles, 0.1e-4)
+        mp_err_specs["HIQUAD"] = spec
+
+        # SEXT
+        n_main_poles = 6
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(2, 30e-4)
+        spec.set_secondary_skew(2, 15e-4)
+        spec.set_secondary_norm(8, 2.5e-4)
+        spec.set_secondary_skew(8, 1e-4)
+        for n_poles in [10, 12, 14, 16]:
+            spec.set_secondary_norm(n_poles, 1e-4)
+            spec.set_secondary_skew(n_poles, 1e-4)
+        spec.set_secondary_norm(18, 0.0, systematic=2e-4)
+        spec.set_secondary_skew(18, 1e-4)
+        for n_poles in [20, 22, 24, 26, 28]:
+            spec.set_secondary_norm(n_poles, 0.5e-4)
+            spec.set_secondary_skew(n_poles, 0.5e-4)
+        spec.set_secondary_norm(30, 0.0, systematic=1e-4)
+        spec.set_secondary_skew(30, 0.5e-4)
+        mp_err_specs["SEXT"] = spec
+
+        # HISEXT (SM2)
+        n_main_poles = 6
+        main_normal = True
+        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec.set_secondary_norm(2, 15e-4)
+        spec.set_secondary_skew(2, 10e-4)
+        spec.set_secondary_norm(8, 3e-4)
+        spec.set_secondary_skew(8, 3e-4)
+        spec.set_secondary_norm(10, 1e-4)
+        spec.set_secondary_skew(10, 1e-4)
+        spec.set_secondary_norm(12, 1e-4)
+        spec.set_secondary_skew(12, 0.5e-4)
+        for n_poles in [14, 16]:
+            spec.set_secondary_norm(n_poles, 0.5e-4)
+            spec.set_secondary_skew(n_poles, 0.5e-4)
+        spec.set_secondary_norm(18, 0.0, systematic=0.5e-4)
+        spec.set_secondary_skew(18, 0.2e-4)
+        for n_poles in [20, 22]:
+            spec.set_secondary_norm(n_poles, 0.1e-4)
+            spec.set_secondary_skew(n_poles, 0.2e-4)
+        for n_poles in [24, 26, 28]:
+            spec.set_secondary_norm(n_poles, 0.1e-4)
+            spec.set_secondary_skew(n_poles, 0.1e-4)
+        spec.set_secondary_norm(30, 0.0, systematic=0.5e-4)
+        spec.set_secondary_skew(30, 0.1e-4)
+        mp_err_specs["HISEXT"] = spec
+
+        return mp_err_specs
+
+    def register_BPMs(self):
+        spec = self._create_bpm_error_spec(self.error_spec.bpms)
+        self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
+
+    def register_bends(self):
+        spec = self._create_magnet_error_spec(
+            self.error_spec.bends,
+            n_main_poles=2,
+            main_normal=True,
+        )
+        self.err.register_magnets(self.elem_inds["BEND"], err_spec=spec)
+
+    def register_complex_bends(self):
+        """Register complex bends (CSBEND) with multipole errors."""
+        spec = self._create_magnet_error_spec(
+            self.error_spec.complex_bends,
+            n_main_poles=2,  # Dipole
+            main_normal=True,
+        )
+        self.err.register_magnets(self.elem_inds["COMPLEX_BEND"], err_spec=spec)
+
+    def register_quads_sexts(self):
+        mp_err_specs = self.get_multipole_err_specs()
+
+        # Set main FSE for each magnet type from Pydantic spec
+        for mag_type, v in mp_err_specs.items():
+            # Get the magnet spec from Pydantic model
+            magnet_spec = self.error_spec.quads_sexts.get(mag_type)
+            if magnet_spec is None:
+                raise ValueError(f"Missing spec for magnet type: {mag_type}")
+
+            main_err_spec = MainMultipoleErrorSpec(
+                fse=self._tges_from_model(magnet_spec.main_fse)
+            )
+            v.set_main_error_spec(main_err_spec)
+
+        # Register magnets with error specs
+        for mag_type, mp_err_spec in mp_err_specs.items():
+            magnet_spec = self.error_spec.quads_sexts[mag_type]
+
+            # Determine n_main_poles and main_normal from magnet type
+            if isinstance(magnet_spec, error_specs.QuadErrorSpecModel):
+                n_main_poles = 4
+                main_normal = True
+            elif isinstance(magnet_spec, error_specs.SextErrorSpecModel):
+                n_main_poles = 6
+                main_normal = True
+            else:
+                raise ValueError(f"Unknown magnet type: {mag_type}")
+
+            spec = self._create_magnet_error_spec(
+                magnet_spec,
+                n_main_poles=n_main_poles,
+                main_normal=main_normal,
+                multipole_spec=mp_err_spec,
+            )
+
+            self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
+
+    def register_girders(self):
+        fsdb = self.fsdb
+        gs_inds, ge_inds = fsdb.get_girder_marker_pairs()
+
+        # Get offset and roll specs from Pydantic model
+        us_offset_x = self._tges_from_model(self.error_spec.girders.us_offset.x)
+        us_offset_y = self._tges_from_model(self.error_spec.girders.us_offset.y)
+        ds_offset_x = self._tges_from_model(self.error_spec.girders.ds_offset.x)
+        ds_offset_y = self._tges_from_model(self.error_spec.girders.ds_offset.y)
+        roll_spec = self._tges_from_model(self.error_spec.girders.roll)
+
+        spec = SupportErrorSpec1DRoll(
+            us_offset=OffsetSpec3D(x=us_offset_x, y=us_offset_y, z=None),
+            ds_offset=OffsetSpec3D(x=ds_offset_x, y=ds_offset_y, z=None),
+            rot=RotationSpec1D(roll=roll_spec),
+        )
+
+        self.err.register_supports(
+            SupportType.girder, gs_inds, ge_inds, spec, overwrite=False
+        )
 
 
 if __name__ == "__main__":
