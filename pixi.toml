@@ -27,6 +27,9 @@ ipympl = ">=0.9.7"
 [feature.parallel.pypi-dependencies]
 dill = ">=0.4.0"
 qtpy = ">=2.4.3"
+# mpi4py 4.x pre-built MPICH backend hardcodes soname libmpi.so.12 (stable MPICH),
+# but MPICH 4.3.0b1 (used on the NSLS-II cluster as of 2026-02) uses libmpi.so.0.
+# Run "pixi run fix-mpi4py-soname" once after install to create the necessary symlink.
 mpi4py = ">=3.1.0"
 
 [feature.genreport.pypi-dependencies]
@@ -44,6 +47,7 @@ pyqt5 = ">=5.15.10"
 pylatex = ">=1.4.2"
 xlsxwriter = ">=3.2.5"
 packaging = ">=25.0"
+# See comment in [feature.parallel.pypi-dependencies] about mpi4py soname issue.
 mpi4py = ">=3.1.0"
 
 [feature.dev.pypi-dependencies]
@@ -57,7 +61,19 @@ genreport = { features = ["base", "genreport"], no-default-feature = true }
 all = { features = ["base", "all"], no-default-feature = true }
 dev = { features = ["base", "all", "dev"], no-default-feature = true }
 
+[feature.base.activation]
+# Prepend ~/.local/lib to LD_LIBRARY_PATH so mpi4py 4.x can find the libmpi.so.12
+# symlink created by "pixi run fix-mpi4py-soname". This also propagates to SLURM
+# compute nodes when jobs are submitted from within this pixi shell.
+scripts = ["pixi_activation.sh"]
+
 [feature.base.tasks]
 install-editable-all = "pip install -e '.[all]'"
 install-editable = "pip install -e ."
 test = "pytest tests/"
+# mpi4py 4.x pre-built MPICH backend hardcodes soname libmpi.so.12 (stable MPICH),
+# but MPICH 4.3.0b1 (used on the NSLS-II cluster as of 2026-02) uses libmpi.so.0.
+# This task creates a symlink libmpi.so.12 -> libmpi.so.0 in ~/.local/lib.
+# ~/.local/lib is added to LD_LIBRARY_PATH by pixi_activation.sh on "pixi shell".
+# Run once after install. Requires mpicc in PATH (e.g. via "module load mpich").
+fix-mpi4py-soname = "mkdir -p $HOME/.local/lib && ln -sf $(mpicc -show | tr ' ' '\\n' | awk '/^-L/{print substr($0,3);exit}')/libmpi.so.0 $HOME/.local/lib/libmpi.so.12 && python -c 'import mpi4py; from mpi4py import MPI; print(\"mpi4py import OK (mpi4py \" + mpi4py.__version__ + \")\")'"

@@ -86,6 +86,12 @@ PyELEGANT provides multiple environments for different use cases. After running 
   pixi shell --environment parallel
   pixi run install-editable
   ```
+  > **NSLS-II cluster note:** If mpi4py fails with `libmpi.so.12: cannot open shared object file`,
+  > run the following once after install (requires `mpicc` in PATH via `module load mpich`):
+  > ```bash
+  > pixi run fix-mpi4py-soname
+  > ```
+  > See [Known Issues](#known-issues) for details.
 
 - **genreport**: Includes tools for report generation (PyLaTeX, XlsxWriter)
   ```bash
@@ -234,6 +240,34 @@ pixi run -e dev pre-commit install
 - mpi4py, dill (for parallel computing)
 - PyQt5, QtPy (for GUI applications)
 - PyLaTeX, XlsxWriter (for report generation)
+
+## Known Issues
+
+### mpi4py on NSLS-II cluster with MPICH 4.3.0b1
+
+The NSLS-II cluster (as of 2026-02) uses MPICH 4.3.0b1, which provides `libmpi.so.0` instead
+of the `libmpi.so.12` soname used by MPICH stable releases. The mpi4py 4.x pre-built wheel
+hardcodes `libmpi.so.12`, causing an `ImportError` when workers start on compute nodes.
+
+**Workaround:** Run once after install (requires `mpicc` in PATH via `module load mpich`):
+
+```bash
+pixi run fix-mpi4py-soname
+```
+
+This creates a `libmpi.so.12 → libmpi.so.0` symlink in `~/.local/lib`. The pixi activation
+script (`pixi_activation.sh`) automatically prepends `~/.local/lib` to `LD_LIBRARY_PATH` when
+you run `pixi shell`. SLURM propagates `LD_LIBRARY_PATH` from the submission shell to compute
+nodes, so no extra steps are needed after running the task.
+
+This is a one-time setup per user. It is not needed once the cluster upgrades to a stable
+MPICH 4.x release (which will restore the `libmpi.so.12` soname).
+
+Quick test after the workaround:
+
+```bash
+pixi run python -c "from mpi4py import MPI; print(MPI.Get_version())"
+```
 
 ## License
 
