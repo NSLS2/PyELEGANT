@@ -8695,6 +8695,7 @@ class Report_NSLS2U_Default:
         ini_ndiv = calc_opts["ini_ndiv"]
         n_lines = calc_opts["n_lines"]
         neg_y_search = calc_opts.get("neg_y_search", False)
+        tempdir_path = ncf.get("tempdir_path", None)
 
         remote_opts = dict(
             sbatch={"use": True, "wait": True}, pelegant=True, job_name=calc_type
@@ -8717,10 +8718,10 @@ class Report_NSLS2U_Default:
             use_beamline=use_beamline,
             N_KICKS=N_KICKS,
             del_tmp_files=True,
-            # run_local=False,
-            # remote_opts=remote_opts,
-            # err_log_check=err_log_check,
-            run_local=True,
+            tempdir_path=tempdir_path,
+            run_local=False,
+            remote_opts=remote_opts,
+            err_log_check=err_log_check,
         )
 
     def _calc_map_xy(
@@ -8917,6 +8918,7 @@ class Report_NSLS2U_Default:
         y_offset = calc_opts.get("y_offset", 1e-6)
         abs_xmax = calc_opts["abs_xmax"]
         abs_ymax = calc_opts["abs_ymax"]
+        tempdir_path = ncf.get("tempdir_path", None)
 
         remote_opts = {}
         remote_opts.update(pe.util.deepcopy_dict(common_remote_opts))
@@ -8970,6 +8972,7 @@ class Report_NSLS2U_Default:
                     n_turns=n_turns,
                     N_KICKS=N_KICKS,
                     del_tmp_files=True,
+                    tempdir_path=tempdir_path,
                     run_local=False,
                     remote_opts=plane_specific_remote_opts,
                     err_log_check=err_log_check,
@@ -9012,6 +9015,7 @@ class Report_NSLS2U_Default:
         delta_offset = calc_opts.get("delta_offset", 0.0)
         delta_min = calc_opts["delta_min"] + delta_offset
         delta_max = calc_opts["delta_max"] + delta_offset
+        tempdir_path = ncf.get("tempdir_path", None)
 
         remote_opts = dict(job_name=calc_type)
         remote_opts.update(pe.util.deepcopy_dict(common_remote_opts))
@@ -9046,6 +9050,7 @@ class Report_NSLS2U_Default:
             x0_offset=x_offset,
             y0_offset=y_offset,
             del_tmp_files=True,
+            tempdir_path=tempdir_path,
             run_local=False,
             remote_opts=remote_opts,
             err_log_check=err_log_check,
@@ -13045,6 +13050,15 @@ class Report_NSLS2U_Default:
         N_KICKS = com_map(CSBEND=40, KQUAD=40, KSEXT=20, KOCT=20)
         N_KICKS.fa.set_flow_style()
         _yaml_append_map(d, "N_KICKS", N_KICKS, eol_comment="REQUIRED")
+        _yaml_append_map(
+            d,
+            "tempdir_path",
+            None,
+            eol_comment=(
+                "Optional temp directory for local nonlinear scratch files "
+                '(e.g., "/dev/shm/$USER-tmp")'
+            ),
+        )
 
         # ---------------------------------------------------------------------------
 

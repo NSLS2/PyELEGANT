@@ -443,14 +443,24 @@ def printout(
     return param_dict, column_dict
 
 
-def sdds2dicts(sdds_filepath, str_format="", show_cmd=False, suppress_err_msg=True):
+def sdds2dicts(
+    sdds_filepath,
+    str_format="",
+    show_cmd=False,
+    suppress_err_msg=True,
+    include_params=True,
+    include_columns=True,
+):
     """"""
+
+    if (not include_params) and (not include_columns):
+        raise ValueError("At least one of include_params/include_columns must be True.")
 
     meta_params, meta_columns = query(sdds_filepath, suppress_err_msg=suppress_err_msg)
 
     meta = {}
 
-    if meta_params:
+    if include_params and meta_params:
         meta["params"] = meta_params
         param_name_list = list(meta["params"])
         double_param_name_list = [
@@ -468,7 +478,7 @@ def sdds2dicts(sdds_filepath, str_format="", show_cmd=False, suppress_err_msg=Tr
         double_param_name_list = None
         nondouble_param_name_list = None
 
-    if meta_columns:
+    if include_columns and meta_columns:
         meta["columns"] = meta_columns
         column_name_list = list(meta["columns"])
         double_column_name_list = [
@@ -488,7 +498,7 @@ def sdds2dicts(sdds_filepath, str_format="", show_cmd=False, suppress_err_msg=Tr
 
     output = {}
 
-    if meta_params == {} and meta_columns == {}:
+    if (param_name_list == []) and (column_name_list == []):
         return output, meta
 
     if double_param_name_list or double_column_name_list:

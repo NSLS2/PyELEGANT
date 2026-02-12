@@ -1071,7 +1071,9 @@ class PageGenReport(PageStandard):
             assert time_edit is not None
             self._time_lineEdits[part_combo_name] = time_edit
 
-    def _update_qos_combo_items(self, current_partition, sender=None):
+    def _update_qos_combo_items(
+        self, current_partition, sender=None, preferred_qos=None
+    ):
         """"""
 
         if sender is None:
@@ -1079,7 +1081,11 @@ class PageGenReport(PageStandard):
         sender_name = sender.objectName()
         qos_combo = self._qos_comboBoxes[sender_name]
 
-        current_qos = qos_combo.currentText()
+        current_qos = (
+            preferred_qos
+            if (preferred_qos is not None) and (preferred_qos != "")
+            else qos_combo.currentText()
+        )
 
         new_qos_names = list(SLURM_MAX_TIME_LIMITS[current_partition])
 
@@ -1337,6 +1343,8 @@ class PageNonlinCalcTest(PageGenReport):
             self.conf["nonlin"]["common_remote_opts"] = {}
             common_remote_opts = self.conf["nonlin"]["common_remote_opts"]
 
+        requested_qos = {}
+
         for mode in ["test", "production"]:
             try:
                 opts = self.conf["nonlin"]["calc_opts"][self.calc_type][mode]
@@ -1377,7 +1385,11 @@ class PageNonlinCalcTest(PageGenReport):
                                 # f'{wtype}_{concat_k}_{self.calc_type}_{mode}',
                                 # conv(v2))
                                 fieldname = f"{wtype}_{k2}_{self.calc_type}_{mode}"
-                                self.setField(fieldname, conv(v2))
+                                conv_v2 = conv(v2)
+                                if k2 == "qos":
+                                    requested_qos[fieldname] = conv_v2
+                                else:
+                                    self.setField(fieldname, conv_v2)
                         else:
                             for k2, v2 in v.items():
                                 concat_k = f"{k}___{k2}"
@@ -1396,7 +1408,11 @@ class PageNonlinCalcTest(PageGenReport):
             # manually at this point, as self._update_qos_combo_items()
             # is not yet connected to the "partition" change
             for fieldname, sender in self._partition_fieldnames_comboBoxes.items():
-                self._update_qos_combo_items(self.field(fieldname), sender=sender)
+                qos_fieldname = fieldname.replace("_partition_", "_qos_")
+                preferred_qos = requested_qos.get(qos_fieldname)
+                self._update_qos_combo_items(
+                    self.field(fieldname), sender=sender, preferred_qos=preferred_qos
+                )
 
             # Update the tooltip for the time lineEdit item
             # based on the selected "partition"/"qos". This
@@ -1630,6 +1646,8 @@ class PageNonlinCalcPlot(PageGenReport):
             ncf["common_remote_opts"] = {}
             common_remote_opts = ncf["common_remote_opts"]
 
+        requested_qos = {}
+
         for mode in ["calc", "plot"]:
             try:
                 if mode == "calc":
@@ -1667,7 +1685,11 @@ class PageNonlinCalcPlot(PageGenReport):
                                 conv = self.converters[conv_type]["set"]
                                 wtype = conv_type.split("_")[0]
                                 fieldname = f"{wtype}_{k2}_{self.calc_type}_{mode}"
-                                self.setField(fieldname, conv(v2))
+                                conv_v2 = conv(v2)
+                                if k2 == "qos":
+                                    requested_qos[fieldname] = conv_v2
+                                else:
+                                    self.setField(fieldname, conv_v2)
                         elif k == "fft_plot_opts":
                             pass  # TODO
                         else:
@@ -1679,7 +1701,13 @@ class PageNonlinCalcPlot(PageGenReport):
                 # manually at this point, as self._update_qos_combo_items()
                 # is not yet connected to the "partition" change
                 for fieldname, sender in self._partition_fieldnames_comboBoxes.items():
-                    self._update_qos_combo_items(self.field(fieldname), sender=sender)
+                    qos_fieldname = fieldname.replace("_partition_", "_qos_")
+                    preferred_qos = requested_qos.get(qos_fieldname)
+                    self._update_qos_combo_items(
+                        self.field(fieldname),
+                        sender=sender,
+                        preferred_qos=preferred_qos,
+                    )
 
                 # Update the tooltip for the time lineEdit item
                 # based on the selected "partition"/"qos". This

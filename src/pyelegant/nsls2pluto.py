@@ -1391,12 +1391,11 @@ def gen_mpi_submit_script(remote_opts):
     else:
         python_cmd = "python"
 
-    main_script_path = f"{__file__[:-3]}_mpi_script.py"
+    main_script_module = "pyelegant.nsls2pluto_mpi_script"
     srun_cmd_list = [
         "srun",
         MPI_COMPILER_OPT_STR,
-        f"{python_cmd} -m mpi4py.futures",
-        main_script_path,
+        f"{python_cmd} -m mpi4py.futures -m {main_script_module}",
         "_mpi_starmap",
         input_filepath,
     ]
@@ -2184,12 +2183,17 @@ def _gen_mpi_executor_submit_script(remote_opts, dt_timeout, paths=None):
     # MPI_COMPILER_OPT_STR = '--mpi=pmi2'
     MPI_COMPILER_OPT_STR = ""
 
-    main_script_path = f"{__file__[:-3]}_mpi_executor.py"
+    _env_info = env_info()
+    if _env_info.get("env_type").startswith("pixi"):
+        python_cmd = shlex.quote(sys.executable)
+    else:
+        python_cmd = "python"
+
+    main_script_module = "pyelegant.nsls2pluto_mpi_executor"
     srun_cmd_list = [
         "srun",
         MPI_COMPILER_OPT_STR,
-        "python -m mpi4py.futures",
-        main_script_path,
+        f"{python_cmd} -m mpi4py.futures -m {main_script_module}",
         f"{paths_filepath}",
         f"{dt_timeout:.3f}",
     ]

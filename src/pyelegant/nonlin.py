@@ -32,6 +32,15 @@ from .local import run
 from .remote import remote
 
 
+def _skip_cleanup_for_protected_dev_path(filepath):
+    """"""
+
+    fp = os.path.abspath(str(filepath))
+    is_dev_path = (fp == "/dev") or fp.startswith("/dev/")
+    is_dev_shm_path = (fp == "/dev/shm") or fp.startswith("/dev/shm/")
+    return is_dev_path and (not is_dev_shm_path)
+
+
 def calc_cmap_xy(
     output_filepath,
     LTE_filepath,
@@ -401,7 +410,7 @@ def _calc_cmap(
 
     if del_tmp_files:
         for fp in ed.actual_output_filepath_list + [ele_filepath]:
-            if fp.startswith("/dev"):
+            if _skip_cleanup_for_protected_dev_path(fp):
                 continue
             else:
                 try:
@@ -1012,7 +1021,7 @@ def _calc_fma(
 
     if del_tmp_files:
         for fp in ed.actual_output_filepath_list + [ele_filepath]:
-            if fp.startswith("/dev"):
+            if _skip_cleanup_for_protected_dev_path(fp):
                 continue
             else:
                 try:
@@ -1354,6 +1363,7 @@ def calc_find_aper_nlines(
     ele_filepath=None,
     output_file_type=None,
     del_tmp_files=True,
+    tempdir_path=None,
     run_local=False,
     remote_opts=None,
     err_log_check=None,
@@ -1375,6 +1385,7 @@ def calc_find_aper_nlines(
         transmute_elements=transmute_elements,
         ele_filepath=ele_filepath,
         del_tmp_files=del_tmp_files,
+        tempdir_path=tempdir_path,
         run_local=run_local,
         remote_opts=remote_opts,
         lattice_file_contents=file_contents,
@@ -1397,8 +1408,14 @@ def calc_find_aper_nlines(
         util.save_input_to_hdf5(output_filepath, input_dict)
 
     if ele_filepath is None:
+        if run_local and (tempdir_path is not None):
+            tmp_dir = str(tempdir_path)
+            if not Path(tmp_dir).exists():
+                tmp_dir = os.getcwd()
+        else:
+            tmp_dir = os.getcwd()
         tmp = tempfile.NamedTemporaryFile(
-            dir=os.getcwd(), delete=False, prefix=f"tmpFindAper_", suffix=".ele"
+            dir=tmp_dir, delete=False, prefix="tmpFindAper_", suffix=".ele"
         )
         ele_filepath = os.path.abspath(tmp.name)
         tmp.close()
@@ -1537,7 +1554,7 @@ def calc_find_aper_nlines(
 
     if del_tmp_files:
         for fp in ed.actual_output_filepath_list + [ele_filepath]:
-            if fp.startswith("/dev"):
+            if _skip_cleanup_for_protected_dev_path(fp):
                 continue
             else:
                 try:
@@ -2247,7 +2264,7 @@ def calc_mom_aper(
 
     if del_tmp_files:
         for fp in ed.actual_output_filepath_list + tmp_files_to_be_deleted:
-            if fp.startswith("/dev"):
+            if _skip_cleanup_for_protected_dev_path(fp):
                 continue
             else:
                 try:
@@ -2549,7 +2566,7 @@ def calc_Touschek_lifetime(
     tmp_filepaths.update(output_tmp_filepaths)
     if del_tmp_files:
         for fp in tmp_filepaths.values():
-            if fp.startswith("/dev"):
+            if _skip_cleanup_for_protected_dev_path(fp):
                 continue
             else:
                 try:
@@ -3065,7 +3082,7 @@ def calc_chrom_twiss(
 
     if del_tmp_files:
         for fp in ed.actual_output_filepath_list + [ele_filepath]:
-            if fp.startswith("/dev"):
+            if _skip_cleanup_for_protected_dev_path(fp):
                 continue
             else:
                 try:
@@ -3154,6 +3171,7 @@ def calc_chrom_track(
     remote_opts=None,
     err_log_check=None,
     nMaxRemoteRetry=3,
+    tempdir_path=None,
 ):
     """
     If "err_log_check" is None, then "nMaxRemoteRetry" is irrelevant.
@@ -3188,6 +3206,7 @@ def calc_chrom_track(
         transmute_elements=transmute_elements,
         ele_filepath=ele_filepath,
         del_tmp_files=del_tmp_files,
+        tempdir_path=tempdir_path,
         run_local=run_local,
         remote_opts=remote_opts,
         lattice_file_contents=file_contents,
@@ -3203,8 +3222,12 @@ def calc_chrom_track(
         util.save_input_to_hdf5(output_filepath, input_dict)
 
     if ele_filepath is None:
+        if run_local and (tempdir_path is not None) and Path(tempdir_path).exists():
+            tmp_dir = Path(tempdir_path)
+        else:
+            tmp_dir = Path.cwd()
         tmp = tempfile.NamedTemporaryFile(
-            dir=Path.cwd(), delete=False, prefix=f"tmpChromTrack_", suffix=".ele"
+            dir=tmp_dir, delete=False, prefix=f"tmpChromTrack_", suffix=".ele"
         )
         ele_pathobj = Path(tmp.name)
         ele_filepath = str(ele_pathobj.resolve())
@@ -3316,7 +3339,9 @@ def calc_chrom_track(
             # tElapsed['run_ele'] += time.time() - t0
 
             # t0 = time.time()
-            output, _ = sdds.sdds2dicts(watch_pathobj, str_format="%25.16e")
+            output, _ = sdds.sdds2dicts(
+                watch_pathobj, str_format="%25.16e", include_params=False
+            )
             # tElapsed['sdds2dicts'] += time.time() - t0
 
             # t0 = time.time()
@@ -3356,6 +3381,7 @@ def calc_chrom_track(
                     std_print_enabled["out"],
                     std_print_enabled["err"],
                     coords_list,
+                    tempdir_path,
                 ),
                 err_log_check=err_log_check,
             )
@@ -3909,10 +3935,12 @@ def _calc_chrom_track_get_tbt(
     print_stdout,
     print_stderr,
     coords_list,
-    tempdir_path="/tmp",
+    tempdir_path=None,
 ):
     """"""
 
+    if tempdir_path is None:
+        tempdir_path = "/tmp"
     if not Path(tempdir_path).exists():
         tempdir_path = Path.cwd()
 
@@ -3943,7 +3971,9 @@ def _calc_chrom_track_get_tbt(
                 print_stderr=print_stderr,
             )
 
-            output, _ = sdds.sdds2dicts(watch_pathobj, str_format="%25.16e")
+            output, _ = sdds.sdds2dicts(
+                watch_pathobj, str_format="%25.16e", include_params=False
+            )
 
             cols = output["columns"]
             for k in list(sub_tbt):
@@ -4712,6 +4742,7 @@ def calc_tswa_x(
     remote_opts=None,
     err_log_check=None,
     nMaxRemoteRetry=3,
+    tempdir_path=None,
 ):
     """
     If "err_log_check" is None, then "nMaxRemoteRetry" is irrelevant.
@@ -4755,6 +4786,7 @@ def calc_tswa_x(
         ele_filepath=ele_filepath,
         output_file_type=output_file_type,
         del_tmp_files=del_tmp_files,
+        tempdir_path=tempdir_path,
         print_cmd=print_cmd,
         run_local=run_local,
         remote_opts=remote_opts,
@@ -4788,6 +4820,7 @@ def calc_tswa_y(
     remote_opts=None,
     err_log_check=None,
     nMaxRemoteRetry=3,
+    tempdir_path=None,
 ):
     """
     If "err_log_check" is None, then "nMaxRemoteRetry" is irrelevant.
@@ -4831,6 +4864,7 @@ def calc_tswa_y(
         ele_filepath=ele_filepath,
         output_file_type=output_file_type,
         del_tmp_files=del_tmp_files,
+        tempdir_path=tempdir_path,
         print_cmd=print_cmd,
         run_local=run_local,
         remote_opts=remote_opts,
@@ -4864,6 +4898,7 @@ def _calc_tswa(
     remote_opts=None,
     err_log_check=None,
     nMaxRemoteRetry=3,
+    tempdir_path=None,
 ):
     """
     If "err_log_check" is None, then "nMaxRemoteRetry" is irrelevant.
@@ -4899,6 +4934,7 @@ def _calc_tswa(
         transmute_elements=transmute_elements,
         ele_filepath=ele_filepath,
         del_tmp_files=del_tmp_files,
+        tempdir_path=tempdir_path,
         run_local=run_local,
         remote_opts=remote_opts,
         lattice_file_contents=file_contents,
@@ -4914,8 +4950,12 @@ def _calc_tswa(
         util.save_input_to_hdf5(output_filepath, input_dict)
 
     if ele_filepath is None:
+        if run_local and (tempdir_path is not None) and Path(tempdir_path).exists():
+            tmp_dir = Path(tempdir_path)
+        else:
+            tmp_dir = Path.cwd()
         tmp = tempfile.NamedTemporaryFile(
-            dir=Path.cwd(), delete=False, prefix=f"tmpTSwA_", suffix=".ele"
+            dir=tmp_dir, delete=False, prefix=f"tmpTSwA_", suffix=".ele"
         )
         ele_pathobj = Path(tmp.name)
         ele_filepath = str(ele_pathobj.resolve())
@@ -5024,7 +5064,9 @@ def _calc_tswa(
             # tElapsed['run_ele'] += time.time() - t0
 
             # t0 = time.time()
-            output, _ = sdds.sdds2dicts(watch_pathobj, str_format="%25.16e")
+            output, _ = sdds.sdds2dicts(
+                watch_pathobj, str_format="%25.16e", include_params=False
+            )
             # tElapsed['sdds2dicts'] += time.time() - t0
 
             # t0 = time.time()
@@ -5065,6 +5107,7 @@ def _calc_tswa(
                     std_print_enabled["out"],
                     std_print_enabled["err"],
                     coords_list,
+                    tempdir_path,
                 ),
                 err_log_check=err_log_check,
             )
@@ -5385,10 +5428,12 @@ def _calc_tswa_get_tbt(
     print_stdout,
     print_stderr,
     coords_list,
-    tempdir_path="/tmp",
+    tempdir_path=None,
 ):
     """"""
 
+    if tempdir_path is None:
+        tempdir_path = "/tmp"
     if not Path(tempdir_path).exists():
         tempdir_path = Path.cwd()
 
@@ -5419,7 +5464,9 @@ def _calc_tswa_get_tbt(
                 print_stderr=print_stderr,
             )
 
-            output, _ = sdds.sdds2dicts(watch_pathobj, str_format="%25.16e")
+            output, _ = sdds.sdds2dicts(
+                watch_pathobj, str_format="%25.16e", include_params=False
+            )
 
             cols = output["columns"]
             for k in list(sub_tbt):
@@ -8204,7 +8251,7 @@ def calc_offmom_closed_orbits(
 
     if del_tmp_files:
         for fp in ed.actual_output_filepath_list + [ele_filepath]:
-            if fp.startswith("/dev"):
+            if _skip_cleanup_for_protected_dev_path(fp):
                 continue
             else:
                 try:
