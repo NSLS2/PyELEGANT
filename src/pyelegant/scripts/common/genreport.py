@@ -163,6 +163,17 @@ def gradient_fill(
     return line, im
 
 
+def _trapz(y, x):
+    """"""
+
+    # NumPy 2 replaced/deprecated `trapz`; prefer `trapezoid` with fallback
+    # for older NumPy versions used in legacy environments.
+    try:
+        return np.trapezoid(y, x)
+    except AttributeError:
+        return np.trapz(y, x)
+
+
 def _yaml_append_map(
     com_map, key, value, eol_comment=None, before_comment=None, before_indent=0
 ):
@@ -10865,7 +10876,7 @@ class Report_NSLS2U_Default:
                                     plt.plot(
                                         twi_a["s"], dtau_inv / np.max(dtau_inv), "r.-"
                                     )
-                                tau_inv = np.trapz(dtau_inv, twi_a["s"])
+                                tau_inv = _trapz(dtau_inv, twi_a["s"])
                                 tau_inv *= (
                                     N_e
                                     * (r_e**2)
@@ -10876,7 +10887,7 @@ class Report_NSLS2U_Default:
                                 tau_SLS_d[sign] = (
                                     1 / tau_inv
                                 )  # [s] # Eq.(1) of A. Streun, SLS Note 18/97
-                                tau_inv_1c = np.trapz(dtau_inv_1c, twi_a["s"])
+                                tau_inv_1c = _trapz(dtau_inv_1c, twi_a["s"])
                                 tau_inv_1c *= (
                                     N_e
                                     * (r_e**2)
@@ -11259,7 +11270,7 @@ class Report_NSLS2U_Default:
                                     plt.plot(
                                         twi_a["s"], dtau_inv / np.max(dtau_inv), "r.-"
                                     )
-                                tau_inv = np.trapz(dtau_inv, twi_a["s"])
+                                tau_inv = _trapz(dtau_inv, twi_a["s"])
                                 tau_inv *= (
                                     N_e
                                     * (r_e**2)
@@ -11270,7 +11281,7 @@ class Report_NSLS2U_Default:
                                 tau_SLS_d[sign] = (
                                     1 / tau_inv
                                 )  # [s] # Eq.(1) of A. Streun, SLS Note 18/97
-                                tau_inv_1c = np.trapz(dtau_inv_1c, twi_a["s"])
+                                tau_inv_1c = _trapz(dtau_inv_1c, twi_a["s"])
                                 tau_inv_1c *= (
                                     N_e
                                     * (r_e**2)
@@ -11523,7 +11534,7 @@ class Report_NSLS2U_Default:
                                     "b.-",
                                 )
                                 plt.plot(twi_a["s"], dtau_inv / np.max(dtau_inv), "r.-")
-                            tau_inv = np.trapz(dtau_inv, twi_a["s"])
+                            tau_inv = _trapz(dtau_inv, twi_a["s"])
                             tau_inv *= (
                                 N_e
                                 * (r_e**2)
@@ -11534,7 +11545,7 @@ class Report_NSLS2U_Default:
                             tau_hrs_SLS[i][j] = (
                                 (1 / tau_inv) / 60 / 60
                             )  # Eq.(1) of A. Streun, SLS Note 18/97
-                            tau_inv_1c = np.trapz(dtau_inv_1c, twi_a["s"])
+                            tau_inv_1c = _trapz(dtau_inv_1c, twi_a["s"])
                             tau_inv_1c *= (
                                 N_e
                                 * (r_e**2)
@@ -11605,7 +11616,7 @@ class Report_NSLS2U_Default:
                                     plt.plot(
                                         twi_a["s"], dtau_inv / np.max(dtau_inv), "r.-"
                                     )
-                                tau_inv = np.trapz(dtau_inv, twi_a["s"])
+                                tau_inv = _trapz(dtau_inv, twi_a["s"])
                                 tau_inv *= (
                                     N_e
                                     * (r_e**2)
@@ -11616,7 +11627,7 @@ class Report_NSLS2U_Default:
                                 tau_SLS_d[sign] = (
                                     1 / tau_inv
                                 )  # [s] # Eq.(1) of A. Streun, SLS Note 18/97
-                                tau_inv_1c = np.trapz(dtau_inv_1c, twi_a["s"])
+                                tau_inv_1c = _trapz(dtau_inv_1c, twi_a["s"])
                                 tau_inv_1c *= (
                                     N_e
                                     * (r_e**2)

@@ -2622,36 +2622,71 @@ def generate_Touschek_F_interpolator():
     _plot_func(xarray, interp(xarray), "k:")
     if True:
         ext_xarray = np.logspace(-6, 3, 1000)
-        F_interp = get_Touschek_F_interpolator()
-        _plot_func(ext_xarray, F_interp(ext_xarray), "m:")
+        _plot_func(ext_xarray, interp(ext_xarray), "m:")
     plt.grid(True)
     plt.tight_layout()
 
     d = dict(
-        pchip_interp=interp, xmin=np.min(xarray[valid]), xmax=np.max(xarray[valid])
+        format_version=2,
+        x_valid=np.array(xarray[valid], dtype=float),
+        F_valid=np.array(Farray[valid], dtype=float),
+        xmin=float(np.min(xarray[valid])),
+        xmax=float(np.max(xarray[valid])),
     )
-    with open("Touschek_F_interpolator.pkl", "wb") as f:
+    with open(Path(__file__).parent.joinpath("Touschek_F_interpolator.pkl"), "wb") as f:
         pickle.dump(d, f)
 
 
 def get_Touschek_F_interpolator():
     """"""
 
-    with open(Path(__file__).parent.joinpath("Touschek_F_interpolator.pkl"), "rb") as f:
+    pickle_path = Path(__file__).parent.joinpath("Touschek_F_interpolator.pkl")
+    with open(pickle_path, "rb") as f:
         d = pickle.load(f)
 
+    if (not isinstance(d, dict)) or ("x_valid" not in d) or ("F_valid" not in d):
+        raise ValueError(
+            (
+                f'"{pickle_path}" is not in the expected format '
+                '(missing "x_valid"/"F_valid"). Re-generate it with '
+                '"generate_Touschek_F_interpolator()".'
+            )
+        )
+
+    x_valid = np.array(d["x_valid"], dtype=float)
+    F_valid = np.array(d["F_valid"], dtype=float)
+    if (x_valid.ndim != 1) or (F_valid.ndim != 1) or (x_valid.size != F_valid.size):
+        raise ValueError("Touschek interpolator data arrays have invalid dimensions.")
+
+    valid = np.isfinite(x_valid) & np.isfinite(F_valid)
+    x_valid = x_valid[valid]
+    F_valid = F_valid[valid]
+    sort_inds = np.argsort(x_valid)
+    x_valid = x_valid[sort_inds]
+    F_valid = F_valid[sort_inds]
+
+    xmin = float(d.get("xmin", np.min(x_valid)))
+    xmax = float(d.get("xmax", np.max(x_valid)))
+
+    interp = PchipInterpolator(x_valid, F_valid, extrapolate=False)
+
     def interpolator(xarray):
-        xarray = np.array(xarray)
+        xarray = np.asarray(xarray, dtype=float)
+        is_scalar = xarray.ndim == 0
+        xarray_1d = np.atleast_1d(xarray)
 
-        Farray = d["pchip_interp"](xarray)
+        Farray = np.asarray(interp(xarray_1d), dtype=float)
 
-        Farray[xarray > d["xmax"]] = 0.0
+        Farray[xarray_1d > xmax] = 0.0
 
         Eulers_number = 0.5772
-        asymp_range = xarray < d["xmin"]
-        Farray[asymp_range] = np.log(Eulers_number / xarray[asymp_range]) - 3 / 2
+        asymp_range = xarray_1d < xmin
+        Farray[asymp_range] = np.log(Eulers_number / xarray_1d[asymp_range]) - 3 / 2
 
-        return Farray
+        if is_scalar:
+            return float(Farray[0])
+        else:
+            return Farray.reshape(xarray.shape)
 
     return interpolator
 
