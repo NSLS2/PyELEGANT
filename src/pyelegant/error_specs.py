@@ -134,112 +134,63 @@ class BPMErrorSpecModel(BaseModel):
     )
 
 
-class MainMultipoleErrorSpecModel(BaseModel):
-    """Main multipole error specification model."""
-
-    fse: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Fractional Strength Error specification",
-    )
-
-
-class BendErrorSpecModel(BaseModel):
-    """Bend magnet error specification model."""
-
-    offset: OffsetSpecModel = Field(
-        default_factory=lambda: OffsetSpecModel(
-            x=TGESModel(rms=100e-6, rms_unit="m"),
-            y=TGESModel(rms=100e-6, rms_unit="m"),
-        ),
-        description="2D offset error specification",
-    )
-    roll: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.5e-3, rms_unit="rad"),
-        description="Roll error specification",
-    )
-    multipole_main_fse: Optional[TGESModel] = Field(
-        default=None,
-        description="Main multipole (i.e. dipole) fractional strength error",
-    )
-
-
-class BendMultipoleErrorSpecModel(BaseModel):
+class CsBendMultipoleErrorSpecModel(BaseModel):
     """
-    Multipole error specification for bend magnets (CSBEND).
+    Multipole error specification for CSBEND magnets.
 
-    Maps directly to ELEGANT's K1-K8 (normal) and KS1-KS8 (skew) parameters.
+    Maps directly to ELEGANT's K1-K8 (normal) parameters.
     Each field represents the truncated Gaussian error spec for that multipole order.
 
     Note: K1 corresponds to quadrupole (2-pole), K2 to sextupole (3-pole), etc.
     CSBEND elements cannot use SYSTEMATIC_MULTIPOLES and must use direct K-value assignment.
+    CSBEND does not support skew multipole parameters (KS1-KS8).
     """
+
+    fse_all: TGESModel = Field(
+        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
+        description="Fractional strength error applied to all multipole components",
+    )
+    fse_dipole: TGESModel = Field(
+        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
+        description="Dipole (2-pole) fractional strength error for combined-function magnets",
+    )
+    fse_quad: TGESModel = Field(
+        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
+        description="Quadrupole (4-pole) fractional strength error for combined-function magnets",
+    )
 
     # Normal multipoles (Kn where n corresponds to ELEGANT's Kn parameter)
     K1: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Quadrupole component (2-pole)",
+        description="Quadrupole component (4-pole)",
     )
     K2: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Sextupole component (3-pole)",
+        description="Sextupole component (6-pole)",
     )
     K3: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Octupole component (4-pole)",
+        description="Octupole component (8-pole)",
     )
     K4: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Decapole component (5-pole)",
+        description="Decapole component (10-pole)",
     )
     K5: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Dodecapole component (6-pole)",
+        description="Dodecapole component (12-pole)",
     )
     K6: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="14-pole component (7-pole)",
+        description="14-pole component",
     )
     K7: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="16-pole component (8-pole)",
+        description="16-pole component",
     )
     K8: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="18-pole component (9-pole)",
-    )
-
-    # Skew multipoles
-    KS1: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew Quadrupole component",
-    )
-    KS2: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew Sextupole component",
-    )
-    KS3: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew Octupole component",
-    )
-    KS4: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew Decapole component",
-    )
-    KS5: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew Dodecapole component",
-    )
-    KS6: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew 14-pole component",
-    )
-    KS7: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew 16-pole component",
-    )
-    KS8: TGESModel = Field(
-        default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
-        description="Skew 18-pole component",
+        description="18-pole component",
     )
 
 
@@ -247,7 +198,9 @@ class CsBendErrorSpecModel(BaseModel):
     """
     CSBEND magnet error specification model.
 
-    Includes offset, roll, main dipole FSE, and multipole errors (K1-K8, KS1-KS8).
+    Includes offset and roll (physical misalignment errors), plus multipole
+    which holds all field-strength errors (fse_all, fse_dipole, fse_quad,
+    K1-K8).
     """
 
     offset: OffsetSpecModel = Field(
@@ -261,13 +214,9 @@ class CsBendErrorSpecModel(BaseModel):
         default_factory=lambda: TGESModel(rms=0.5e-3, rms_unit="rad"),
         description="Roll error specification",
     )
-    multipole_main_fse: Optional[TGESModel] = Field(
-        default=None,
-        description="Main multipole (i.e. dipole) fractional strength error",
-    )
-    multipole: Optional[BendMultipoleErrorSpecModel] = Field(
-        default=None,
-        description="Multipole error specification (K1-K8, KS1-KS8) for CSBEND",
+    multipole: CsBendMultipoleErrorSpecModel = Field(
+        default_factory=CsBendMultipoleErrorSpecModel,
+        description="Field-strength error specification (fse_all, fse_dipole, fse_quad, K1-K8)",
     )
 
 
@@ -276,11 +225,11 @@ class CsBendErrorSpecModel(BaseModel):
 # ============================================================================
 
 
-class BaseMagnetErrorSpecModel(BaseModel):
+class SysMultMagnetErrorSpecModel(BaseModel):
     """
     Base magnet error specification model with common fields.
 
-    All magnet types share offset and roll errors. The main_fse (Fractional
+    All magnet types share offset and roll errors. The fse (Fractional
     Strength Error) is defined here with a default of 0.0, and subclasses
     override it with appropriate values from PDR Table 3.1.9.
     """
@@ -296,54 +245,49 @@ class BaseMagnetErrorSpecModel(BaseModel):
         default_factory=lambda: TGESModel(rms=0.2e-3, rms_unit="rad"),
         description="Roll error specification",
     )
-    main_fse: TGESModel = Field(
+    fse: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
         description="Main multipole fractional strength error",
     )
 
 
-class QuadErrorSpecModel(BaseMagnetErrorSpecModel):
+class QuadErrorSpecModel(SysMultMagnetErrorSpecModel):
     """
     Quadrupole error specification model.
 
     Based on NSLS-II PDR Table 3.1.9: FSE = 2.5e-4
     """
 
-    main_fse: TGESModel = Field(
+    fse: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=2.5e-4, rms_unit=""),
         description="Quadrupole fractional strength error (PDR Table 3.1.9)",
     )
 
 
-class SextErrorSpecModel(BaseMagnetErrorSpecModel):
+class SextErrorSpecModel(SysMultMagnetErrorSpecModel):
     """
     Sextupole error specification model.
 
     Based on NSLS-II PDR Table 3.1.9: FSE = 5e-4
     """
 
-    main_fse: TGESModel = Field(
+    fse: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=5e-4, rms_unit=""),
         description="Sextupole fractional strength error (PDR Table 3.1.9)",
     )
 
 
-class OctErrorSpecModel(BaseMagnetErrorSpecModel):
+class OctErrorSpecModel(SysMultMagnetErrorSpecModel):
     """
     Octupole error specification model.
 
     FSE = 0.0 (no main field error for octupoles in current specification)
     """
 
-    main_fse: TGESModel = Field(
+    fse: TGESModel = Field(
         default_factory=lambda: TGESModel(rms=0.0, rms_unit=""),
         description="Octupole fractional strength error",
     )
-
-
-# Backward compatibility aliases
-QuadSextErrorSpecModel = BaseMagnetErrorSpecModel
-QuadNonlinMagnetErrorSpecModel = BaseMagnetErrorSpecModel
 
 
 class GirderErrorSpecModel(BaseModel):
@@ -420,8 +364,8 @@ class NSLS2ErrorSpecModel(BaseModel):
         description="BPM error specifications",
     )
 
-    bends: BendErrorSpecModel = Field(
-        default_factory=lambda: BendErrorSpecModel(
+    csbends: CsBendErrorSpecModel = Field(
+        default_factory=lambda: CsBendErrorSpecModel(
             # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
             offset=OffsetSpecModel(
                 x=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
@@ -429,10 +373,10 @@ class NSLS2ErrorSpecModel(BaseModel):
             ),
             roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=2.0),
         ),
-        description="Bend magnet error specifications",
+        description="CSBEND magnet error specifications",
     )
 
-    quads_sexts: Dict[str, BaseMagnetErrorSpecModel] = Field(
+    quads_sexts: Dict[str, SysMultMagnetErrorSpecModel] = Field(
         default_factory=lambda: {
             # Based on NSLS-II PDR Table 3.1.9 (main FSE)
             # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4) (offset and roll)
@@ -442,7 +386,7 @@ class NSLS2ErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 2.5e-4 from QuadErrorSpecModel
+                # fse defaults to 2.5e-4 from QuadErrorSpecModel
             ),
             "HIQUAD": QuadErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -450,7 +394,7 @@ class NSLS2ErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 2.5e-4 from QuadErrorSpecModel
+                # fse defaults to 2.5e-4 from QuadErrorSpecModel
             ),
             "SEXT": SextErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -458,7 +402,7 @@ class NSLS2ErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 5e-4 from SextErrorSpecModel
+                # fse defaults to 5e-4 from SextErrorSpecModel
             ),
             "HISEXT": SextErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -466,7 +410,7 @@ class NSLS2ErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 5e-4 from SextErrorSpecModel
+                # fse defaults to 5e-4 from SextErrorSpecModel
             ),
         },
         description="Quad and sextupole error specifications by magnet type",
@@ -540,20 +484,23 @@ class NSLS2UErrorSpecModel(BaseModel):
         description="BPM error specifications",
     )
 
-    bends: BendErrorSpecModel = Field(
-        default_factory=lambda: BendErrorSpecModel(
-            # Default values (can be overridden)
+    csbends: CsBendErrorSpecModel = Field(
+        default_factory=lambda: CsBendErrorSpecModel(
+            # PMQ: Combined-function CSBEND magnets with dipole and quadrupole components
             offset=OffsetSpecModel(
                 x=TGESModel(rms=15e-6, rms_unit="m", cutoff=1.0),
                 y=TGESModel(rms=15e-6, rms_unit="m", cutoff=1.0),
             ),
             roll=TGESModel(rms=0.1e-3, rms_unit="rad", cutoff=1.0),
-            multipole_main_fse=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+            multipole=CsBendMultipoleErrorSpecModel(
+                fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+                fse_quad=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+            ),
         ),
-        description="Bend magnet error specifications (PMQ)",
+        description="CSBEND magnet error specifications (PMQ combined-function magnets)",
     )
 
-    quads_nonlin_magnets: Dict[str, BaseMagnetErrorSpecModel] = Field(
+    quads_nonlin_magnets: Dict[str, SysMultMagnetErrorSpecModel] = Field(
         default_factory=lambda: {
             # Based on NSLS-II PDR Table 3.1.9 (main FSE)
             # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4) (offset and roll)
@@ -563,7 +510,7 @@ class NSLS2UErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0),
-                # main_fse defaults to 2.5e-4 from QuadErrorSpecModel
+                # fse defaults to 2.5e-4 from QuadErrorSpecModel
             ),
             "SEXT": SextErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -571,7 +518,7 @@ class NSLS2UErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0),
-                # main_fse defaults to 5e-4 from SextErrorSpecModel
+                # fse defaults to 5e-4 from SextErrorSpecModel
             ),
             "OCT": OctErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -579,7 +526,7 @@ class NSLS2UErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0),
-                # main_fse defaults to 0.0 from OctErrorSpecModel
+                # fse defaults to 0.0 from OctErrorSpecModel
             ),
         },
         description="Quad and nonlinear magnet error specifications by magnet type",
@@ -659,8 +606,8 @@ class NSLS2CBErrorSpecModel(BaseModel):
         description="BPM error specifications",
     )
 
-    bends: BendErrorSpecModel = Field(
-        default_factory=lambda: BendErrorSpecModel(
+    csbends: CsBendErrorSpecModel = Field(
+        default_factory=lambda: CsBendErrorSpecModel(
             # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
             offset=OffsetSpecModel(
                 x=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
@@ -668,7 +615,7 @@ class NSLS2CBErrorSpecModel(BaseModel):
             ),
             roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=2.0),
         ),
-        description="Bend magnet error specifications",
+        description="CSBEND magnet error specifications",
     )
 
     complex_bends: CsBendErrorSpecModel = Field(
@@ -678,18 +625,21 @@ class NSLS2CBErrorSpecModel(BaseModel):
                 y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
             ),
             roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
-            multipole_main_fse=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
-            multipole=BendMultipoleErrorSpecModel(
+            multipole=CsBendMultipoleErrorSpecModel(
+                fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
                 # Example: Add quadrupole and sextupole errors
                 K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
-                K2=TGESModel(rms=5e-4, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                K2=TGESModel(rms=0.3, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                K3=TGESModel(
+                    rms=25, rms_unit="m^{-4}", cutoff=1.0
+                ),  # Octupole component
                 # Other multipoles default to rms=0.0
             ),
         ),
         description="Complex bend (CSBEND) magnet error specifications with multipoles",
     )
 
-    quads_sexts: Dict[str, BaseMagnetErrorSpecModel] = Field(
+    quads_sexts: Dict[str, SysMultMagnetErrorSpecModel] = Field(
         default_factory=lambda: {
             # Based on NSLS-II PDR Table 3.1.9 (main FSE)
             # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4) (offset and roll)
@@ -699,7 +649,7 @@ class NSLS2CBErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 2.5e-4 from QuadErrorSpecModel
+                # fse defaults to 2.5e-4 from QuadErrorSpecModel
             ),
             "HIQUAD": QuadErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -707,7 +657,7 @@ class NSLS2CBErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 2.5e-4 from QuadErrorSpecModel
+                # fse defaults to 2.5e-4 from QuadErrorSpecModel
             ),
             "SEXT": SextErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -715,7 +665,7 @@ class NSLS2CBErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 5e-4 from SextErrorSpecModel
+                # fse defaults to 5e-4 from SextErrorSpecModel
             ),
             "HISEXT": SextErrorSpecModel(
                 offset=OffsetSpecModel(
@@ -723,7 +673,7 @@ class NSLS2CBErrorSpecModel(BaseModel):
                     y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
                 ),
                 roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
-                # main_fse defaults to 5e-4 from SextErrorSpecModel
+                # fse defaults to 5e-4 from SextErrorSpecModel
             ),
         },
         description="Quad and sextupole error specifications by magnet type",

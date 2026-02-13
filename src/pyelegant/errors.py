@@ -255,65 +255,48 @@ class SupportError:
 
 
 @dataclass
-class MainMultipoleErrorSpec:
-    _def_fac = partial(TGES, rms=0.0, rms_unit="")
-    # fse := Fractional Strength Error
-    fse: TGES = dc.field(default_factory=_def_fac)
-
-
-@dataclass
-class MainMultipoleError:
-    # fse := Fractional Strength Error
-    fse: float = 0.0
-
-
-@dataclass
-class BendMultipoleErrorSpec:
+class CsBendMultipoleErrorSpec:
     """
-    Multipole error specification for bend magnets (CSBEND).
+    Multipole error specification for CSBEND magnets.
 
-    Maps directly to ELEGANT's K1-K8 (normal) and KS1-KS8 (skew) parameters.
+    Maps directly to ELEGANT's K1-K8 (normal) parameters.
     Each field represents the truncated Gaussian error spec for that multipole order.
 
     Note: K1 corresponds to quadrupole (2-pole), K2 to sextupole (3-pole), etc.
+    CSBEND does not support skew multipole parameters (KS1-KS8).
     """
 
     _def_fac = partial(TGES, rms=0.0, rms_unit="")
 
-    # Main dipole fractional strength error
-    main_fse: TGES = dc.field(default_factory=_def_fac)  # Dipole FSE
+    fse_all: TGES = dc.field(default_factory=_def_fac)  # FSE for all components
+    fse_dipole: TGES = dc.field(default_factory=_def_fac)  # Dipole (2-pole) FSE
+    fse_quad: TGES = dc.field(default_factory=_def_fac)  # Quadrupole (4-pole) FSE
 
     # Normal multipoles (Kn where n corresponds to ELEGANT's Kn parameter)
-    K1: TGES = dc.field(default_factory=_def_fac)  # Quadrupole (2-pole)
-    K2: TGES = dc.field(default_factory=_def_fac)  # Sextupole (3-pole)
-    K3: TGES = dc.field(default_factory=_def_fac)  # Octupole (4-pole)
-    K4: TGES = dc.field(default_factory=_def_fac)  # Decapole (5-pole)
-    K5: TGES = dc.field(default_factory=_def_fac)  # Dodecapole (6-pole)
-    K6: TGES = dc.field(default_factory=_def_fac)  # 14-pole (7-pole)
-    K7: TGES = dc.field(default_factory=_def_fac)  # 16-pole (8-pole)
-    K8: TGES = dc.field(default_factory=_def_fac)  # 18-pole (9-pole)
-
-    # Skew multipoles
-    KS1: TGES = dc.field(default_factory=_def_fac)  # Skew Quadrupole
-    KS2: TGES = dc.field(default_factory=_def_fac)  # Skew Sextupole
-    KS3: TGES = dc.field(default_factory=_def_fac)  # Skew Octupole
-    KS4: TGES = dc.field(default_factory=_def_fac)  # Skew Decapole
-    KS5: TGES = dc.field(default_factory=_def_fac)  # Skew Dodecapole
-    KS6: TGES = dc.field(default_factory=_def_fac)  # Skew 14-pole
-    KS7: TGES = dc.field(default_factory=_def_fac)  # Skew 16-pole
-    KS8: TGES = dc.field(default_factory=_def_fac)  # Skew 18-pole
+    K1: TGES = dc.field(default_factory=_def_fac)  # Quadrupole (4-pole)
+    K2: TGES = dc.field(default_factory=_def_fac)  # Sextupole (6-pole)
+    K3: TGES = dc.field(default_factory=_def_fac)  # Octupole (8-pole)
+    K4: TGES = dc.field(default_factory=_def_fac)  # Decapole (10-pole)
+    K5: TGES = dc.field(default_factory=_def_fac)  # Dodecapole (12-pole)
+    K6: TGES = dc.field(default_factory=_def_fac)  # 14-pole
+    K7: TGES = dc.field(default_factory=_def_fac)  # 16-pole
+    K8: TGES = dc.field(default_factory=_def_fac)  # 18-pole
 
 
-class MultipoleErrorSpec:
+class SystematicMultipoleErrorSpec:
+    """Systematic multipole error specification for KQUAD, KSEXT, KOCT magnets.
+
+    Uses ELEGANT's SYSTEMATIC_MULTIPOLES property.
+    Main field FSE + secondary multipoles from SDDS files.
+    """
+
     def __init__(
         self,
         n_main_poles: int,
         main_normal: bool,
         secondary_ref_radius: Union[float, None] = None,
         secondary_cutoff: float = 2.0,
-        main_error: Union[
-            MainMultipoleErrorSpec, Dict[int, MainMultipoleErrorSpec], None
-        ] = None,
+        main_fse: Union[TGES, Dict[int, TGES], None] = None,
     ) -> None:
         self._fields = []
 
@@ -335,31 +318,38 @@ class MultipoleErrorSpec:
         self.secondary_cutoff = secondary_cutoff
         self._fields.append("secondary_cutoff")
 
-        self.main_errors = {}
-        self.set_main_error_spec(main_error)
-        self._fields.append("main_errors")
+        # Store main field FSE directly as dict of TGES (no wrapper class)
+        self.main_fse = {}
+        self.set_main_fse(main_fse)
+        self._fields.append("main_fse")
 
         self.secondary_normal = {}
         self.secondary_skew = {}
         self._fields.append("secondary_normal")
         self._fields.append("secondary_skew")
 
-    def set_main_error_spec(
+    def set_main_fse(
         self,
-        main_error_spec: Union[
-            MainMultipoleErrorSpec, Dict[int, MainMultipoleErrorSpec], None
-        ],
+        fse_spec: Union[TGES, Dict[int, TGES], None],
     ):
-        if main_error_spec is None:
-            self.main_errors[self.n_main_poles] = MainMultipoleErrorSpec()
-        elif isinstance(main_error_spec, MainMultipoleErrorSpec):
-            self.main_errors[self.n_main_poles] = main_error_spec
-        elif isinstance(main_error_spec, dict):
-            for n_poles, spec in main_error_spec.items():
+        """Set main field fractional strength error.
+
+        Parameters
+        ----------
+        fse_spec : TGES, dict of TGES, or None
+            FSE specification. If TGES, applies to n_main_poles.
+            If dict, keys are n_poles and values are TGES specs.
+        """
+        if fse_spec is None:
+            self.main_fse[self.n_main_poles] = TGES(rms=0.0, rms_unit="")
+        elif isinstance(fse_spec, TGES):
+            self.main_fse[self.n_main_poles] = fse_spec
+        elif isinstance(fse_spec, dict):
+            for n_poles, spec in fse_spec.items():
                 assert isinstance(n_poles, int)
                 assert n_poles % 2 == 0
-                assert isinstance(spec, MainMultipoleErrorSpec)
-                self.main_errors[n_poles] = spec
+                assert isinstance(spec, TGES)
+                self.main_fse[n_poles] = spec
         else:
             raise NotImplementedError
 
@@ -381,16 +371,19 @@ class MultipoleErrorSpec:
         return self._fields
 
 
-class MultipoleError:
+class SystematicMultipoleError:
+    """Systematic multipole error instance for KQUAD, KSEXT, KOCT magnets.
+
+    Stores realized error values from SystematicMultipoleErrorSpec.
+    """
+
     def __init__(
         self,
         n_main_poles: Union[int, None] = None,
         main_normal: Union[bool, None] = None,
         secondary_ref_radius: Union[float, None] = None,
         secondary_cutoff: Union[float, None] = 2.0,
-        main_error: Union[
-            MainMultipoleError, Dict[int, MainMultipoleError], None
-        ] = None,
+        main_fse_error: Union[float, Dict[int, float], None] = None,
         secondary_normal_error: Union[Dict, None] = None,
         secondary_skew_error: Union[Dict, None] = None,
     ) -> None:
@@ -420,12 +413,13 @@ class MultipoleError:
             self.secondary_cutoff = secondary_cutoff
         self._fields.append("secondary_cutoff")
 
-        self.main_errors = {}
-        if main_error is not None:
-            self.set_main_error(main_error)
+        # Store main FSE errors as dict of floats (realized error values)
+        self.main_fse_errors = {}
+        if main_fse_error is not None:
+            self.set_main_fse_error(main_fse_error)
         else:
-            self.main_errors[self.n_main_poles] = MainMultipoleError()
-        self._fields.append("main_errors")
+            self.main_fse_errors[self.n_main_poles] = 0.0
+        self._fields.append("main_fse_errors")
 
         if secondary_normal_error is not None:
             self.set_secondary_normal_error(secondary_normal_error)
@@ -462,17 +456,23 @@ class MultipoleError:
         assert cutoff > 0.0
         self.secondary_cutoff = cutoff
 
-    def set_main_error(
-        self, main_error: Union[MainMultipoleError, Dict[int, MainMultipoleError]]
-    ):
-        if isinstance(main_error, MainMultipoleError):
-            self.main_errors[self.n_main_poles] = main_error
-        elif isinstance(main_error, dict):
-            for n_poles, err in main_error.items():
+    def set_main_fse_error(self, fse_error: Union[float, Dict[int, float]]):
+        """Set main field FSE error values.
+
+        Parameters
+        ----------
+        fse_error : float or dict of floats
+            Realized FSE error value(s). If float, applies to n_main_poles.
+            If dict, keys are n_poles and values are error floats.
+        """
+        if isinstance(fse_error, (float, int, np.floating, np.integer)):
+            self.main_fse_errors[self.n_main_poles] = float(fse_error)
+        elif isinstance(fse_error, dict):
+            for n_poles, err in fse_error.items():
                 assert isinstance(n_poles, int)
                 assert n_poles % 2 == 0
-                assert isinstance(err, MainMultipoleError)
-                self.main_errors[n_poles] = err
+                assert isinstance(err, (float, int, np.floating, np.integer))
+                self.main_fse_errors[n_poles] = float(err)
         else:
             raise NotImplementedError
 
@@ -504,13 +504,14 @@ class MultipoleError:
 class MagnetErrorSpec:
     def __init__(
         self,
-        multipole: Union[MultipoleErrorSpec, BendMultipoleErrorSpec, None] = None,
-        bending_angle: None = None,
+        multipole: Union[
+            SystematicMultipoleErrorSpec, CsBendMultipoleErrorSpec, None
+        ] = None,
         offset: Union[OffsetSpec2D, OffsetSpec3D, None] = None,
         rot: Union[RotationSpec1D, RotationSpec3D, None] = None,
     ) -> None:
         """
-        Magnet - Multipole -- Main Multipole Error ------- FSE (Fractional Strength)
+        Magnet - Multipole -- Main Field FSE
                |            |
                - Offset     - Secondary Multipole Errors - Normal
                |                                         |
@@ -519,8 +520,8 @@ class MagnetErrorSpec:
                - Support
 
         Notes:
-        - For KQUAD/KSEXT: Use MultipoleErrorSpec (generates SYSTEMATIC_MULTIPOLES)
-        - For CSBEND: Use BendMultipoleErrorSpec (directly sets K1-K8, KS1-KS8)
+        - For KQUAD/KSEXT/KOCT: Use SystematicMultipoleErrorSpec (uses SYSTEMATIC_MULTIPOLES property)
+        - For CSBEND: Use CsBendMultipoleErrorSpec (directly sets K1-K8)
         """
 
         self._fields = []
@@ -528,7 +529,9 @@ class MagnetErrorSpec:
         if multipole is None:
             self.multipole = None
         else:
-            assert isinstance(multipole, (MultipoleErrorSpec, BendMultipoleErrorSpec))
+            assert isinstance(
+                multipole, (SystematicMultipoleErrorSpec, CsBendMultipoleErrorSpec)
+            )
             self.multipole = multipole
         self._fields.append("multipole")
 
@@ -556,7 +559,7 @@ class MagnetError:
         elem_name: str,
         offset: Union[Offset3D, None] = None,
         rot: Union[Rotation3D, None] = None,
-        multipole: Union[MultipoleError, None] = None,
+        multipole: Union[SystematicMultipoleError, None] = None,
     ) -> None:
         self.elem_name = elem_name
         self.offset = Offset3D() if offset is None else offset
@@ -566,10 +569,12 @@ class MagnetError:
         assert isinstance(self.elem_name, str)
         assert isinstance(self.offset, Offset3D)
         assert isinstance(self.rot, Rotation3D)
-        assert (self.multipole is None) or isinstance(self.multipole, MultipoleError)
+        assert (self.multipole is None) or isinstance(
+            self.multipole, SystematicMultipoleError
+        )
 
-    def set_multipole_error(self, multipole_error: MultipoleError):
-        assert isinstance(multipole_error, MultipoleError)
+    def set_multipole_error(self, multipole_error: SystematicMultipoleError):
+        assert isinstance(multipole_error, SystematicMultipoleError)
         self.multipole = multipole_error
 
 
@@ -1159,16 +1164,18 @@ class Errors:
             spec = self.magnets[ei]
 
             magnet_err = MagnetError(elem_name)
-            mpole_err = None  # Will be set for MultipoleErrorSpec
+            mpole_err = None  # Will be set for SystematicMultipoleErrorSpec
 
             # Handle multipole spec initialization based on type
             if spec.multipole is not None:
-                if isinstance(spec.multipole, BendMultipoleErrorSpec):
-                    # For BendMultipoleErrorSpec, we don't create a MultipoleError object
-                    # Instead, we'll directly apply K1-K8, KS1-KS8 parameters later
+                if isinstance(spec.multipole, CsBendMultipoleErrorSpec):
+                    # For CsBendMultipoleErrorSpec, we don't create a SystematicMultipoleError object
+                    # Instead, we'll directly apply K1-K8 parameters later
                     pass
-                elif isinstance(spec.multipole, MultipoleErrorSpec):
-                    mpole_err = MultipoleError(n_main_poles=spec.multipole.n_main_poles)
+                elif isinstance(spec.multipole, SystematicMultipoleErrorSpec):
+                    mpole_err = SystematicMultipoleError(
+                        n_main_poles=spec.multipole.n_main_poles
+                    )
                     magnet_err.set_multipole_error(mpole_err)
 
             self.ring[ei]["magnet"] = magnet_err
@@ -1180,16 +1187,48 @@ class Errors:
                     if spec2 is None:  # No multipole error specified
                         continue
 
-                    # Handle BendMultipoleErrorSpec (direct K-values for CSBEND)
-                    if isinstance(spec2, BendMultipoleErrorSpec):
-                        # Handle main_fse first
-                        if spec2.main_fse.rms > 0.0 or spec2.main_fse.mean != 0.0:
-                            prop_path = [prop_name, "main_fse"]
+                    # Handle CsBendMultipoleErrorSpec (direct K-values for CSBEND)
+                    if isinstance(spec2, CsBendMultipoleErrorSpec):
+                        # Handle fse_all (global FSE → ELEGANT FSE)
+                        if spec2.fse_all.rms > 0.0 or spec2.fse_all.mean != 0.0:
+                            prop_path = [prop_name, "fse_all"]
                             self._magnets_dist[
                                 (
-                                    spec2.main_fse.rms,
-                                    spec2.main_fse.cutoff,
-                                    spec2.main_fse.mean,
+                                    spec2.fse_all.rms,
+                                    spec2.fse_all.cutoff,
+                                    spec2.fse_all.mean,
+                                )
+                            ].append((ei, elem_name, prop_path))
+
+                        # Handle fse_dipole (dipole-component FSE → ELEGANT FSE_DIPOLE)
+                        if spec2.fse_dipole.rms > 0.0 or spec2.fse_dipole.mean != 0.0:
+                            prop_path = [prop_name, "fse_dipole"]
+                            self._magnets_dist[
+                                (
+                                    spec2.fse_dipole.rms,
+                                    spec2.fse_dipole.cutoff,
+                                    spec2.fse_dipole.mean,
+                                )
+                            ].append((ei, elem_name, prop_path))
+
+                        # Handle fse_quad (quad-component FSE → ELEGANT FSE_QUADRUPOLE)
+                        # Mutually exclusive with a non-zero K1 error: fse_quad scales
+                        # the design K1 fractionally, while a K1 error adds to it
+                        # additively — applying both is physically ambiguous.
+                        if spec2.fse_quad.rms > 0.0 or spec2.fse_quad.mean != 0.0:
+                            if spec2.K1.rms > 0.0 or spec2.K1.mean != 0.0:
+                                raise ValueError(
+                                    f"Element '{elem_name}': fse_quad and K1 error "
+                                    "cannot both be non-zero. Use fse_quad (fractional "
+                                    "scaling via FSE_QUADRUPOLE) or K1 (additive error), "
+                                    "not both."
+                                )
+                            prop_path = [prop_name, "fse_quad"]
+                            self._magnets_dist[
+                                (
+                                    spec2.fse_quad.rms,
+                                    spec2.fse_quad.cutoff,
+                                    spec2.fse_quad.mean,
                                 )
                             ].append((ei, elem_name, prop_path))
 
@@ -1203,14 +1242,6 @@ class Errors:
                             "K6",
                             "K7",
                             "K8",
-                            "KS1",
-                            "KS2",
-                            "KS3",
-                            "KS4",
-                            "KS5",
-                            "KS6",
-                            "KS7",
-                            "KS8",
                         ]:
                             tges_spec = getattr(spec2, k_param)
                             if tges_spec.rms > 0.0 or tges_spec.mean != 0.0:
@@ -1220,33 +1251,24 @@ class Errors:
                                 ].append((ei, elem_name, prop_path))
                         continue
 
-                    # Handle MultipoleErrorSpec (SYSTEMATIC_MULTIPOLES for KQUAD/KSEXT)
+                    # Handle SystematicMultipoleErrorSpec (SYSTEMATIC_MULTIPOLES for KQUAD/KSEXT/KOCT)
                     assert (
                         mpole_err is not None
-                    ), "mpole_err should be set for MultipoleErrorSpec"
+                    ), "mpole_err should be set for SystematicMultipoleErrorSpec"
                     for prop2_name in spec2.fields():
-                        if prop2_name == "main_errors":
-                            main_err_spec_d = getattr(spec2, prop2_name)
-                            for n_poles, main_err_spec in main_err_spec_d.items():
-                                assert isinstance(main_err_spec, MainMultipoleErrorSpec)
-                                for fld in dc.fields(main_err_spec):
-                                    prop3_name = fld.name
-                                    spec4 = getattr(main_err_spec, prop3_name)
-                                    prop_path = [
-                                        prop_name,
-                                        prop2_name,
-                                        n_poles,
-                                        prop3_name,
-                                    ]
-                                    assert isinstance(spec4, TGES)
-                                    unit = spec4.rms_unit
-                                    assert unit == ""
-                                    self._magnets_dist[
-                                        (spec4.rms, spec4.cutoff, spec4.mean)
-                                    ].append((ei, elem_name, prop_path))
-                                magnet_err.multipole.main_errors[
-                                    n_poles
-                                ] = MainMultipoleError()
+                        if prop2_name == "main_fse":
+                            # Main field FSE stored as dict of TGES
+                            main_fse_spec_d = getattr(spec2, prop2_name)
+                            for n_poles, fse_tges in main_fse_spec_d.items():
+                                assert isinstance(fse_tges, TGES)
+                                prop_path = [prop_name, prop2_name, n_poles]
+                                unit = fse_tges.rms_unit
+                                assert unit == ""
+                                self._magnets_dist[
+                                    (fse_tges.rms, fse_tges.cutoff, fse_tges.mean)
+                                ].append((ei, elem_name, prop_path))
+                                # Initialize the error value to 0.0
+                                magnet_err.multipole.main_fse_errors[n_poles] = 0.0
                         elif prop2_name in (
                             "n_main_poles",
                             "main_normal",
@@ -1269,37 +1291,9 @@ class Errors:
                         else:
                             raise ValueError(prop2_name)
                 elif hasattr(spec2, "fields"):
-                    # print(spec2.fields())
-                    for prop2_name in spec2.fields():
-                        spec3 = getattr(spec2, prop2_name)
-
-                        if isinstance(spec3, TGES):
-                            raise RuntimeError("This shouldn't be reachable")
-                        elif isinstance(spec3, MainMultipoleErrorSpec):
-                            for fld in dc.fields(spec3):
-                                prop3_name = fld.name
-                                spec4 = getattr(spec3, prop3_name)
-                                prop_path = [prop_name, prop2_name, prop3_name]
-                                assert isinstance(spec4, TGES)
-                                unit = spec4.rms_unit
-                                assert unit == ""
-                                # print(f"{prop_path}, {spec4}, TGES")
-                                self._magnets_dist[
-                                    (spec4.rms, spec4.cutoff, spec4.mean)
-                                ].append((ei, elem_name, prop_path))
-                        elif isinstance(spec3, dict):
-                            for n_poles, spec4 in spec3.items():
-                                prop_path = [prop_name, prop2_name, n_poles]
-                                assert isinstance(spec4, TGES)
-                                unit = spec4.rms_unit
-                                assert unit == ""
-                                # print(f"{prop_path}, {spec4}, TGES")
-                                self._magnets_dist[
-                                    (spec4.rms, spec4.cutoff, spec4.mean)
-                                ].append((ei, elem_name, prop_path))
-
-                        else:
-                            raise RuntimeError("This shouldn't be reachable")
+                    # This branch should not be reachable after refactoring
+                    # as main_fse is now handled above
+                    raise RuntimeError("Unexpected spec2 structure")
 
                 else:
                     # print([fld.name for fld in dc.fields(spec2)])
@@ -1338,19 +1332,36 @@ class Errors:
             ):
                 assert self.ring[ei]["name"] == elem_name
 
-                # Special handling for BendMultipoleErrorSpec (direct K-value application)
+                # Special handling for CsBendMultipoleErrorSpec (direct K-value application)
                 if (
                     len(prop_path) == 2
                     and prop_path[0] == "multipole"
-                    and (prop_path[1].startswith("K") or prop_path[1] == "main_fse")
+                    and (
+                        prop_path[1].startswith("K")
+                        or prop_path[1] in ("fse_all", "fse_dipole", "fse_quad")
+                    )
                 ):
-                    # For CSBEND K-parameters and main_fse, store directly for later application to LTE
-                    # The actual application happens in the LTE generation phase
+                    # For CSBEND K-parameters and FSE fields, store directly for later
+                    # application to LTE. The actual application happens in the LTE
+                    # generation phase.
                     magnet_err = self.ring[ei]["magnet"]
-                    # Store the K-value or main_fse in a special dict for direct parameter application
                     if not hasattr(magnet_err, "bend_k_errors"):
                         magnet_err.bend_k_errors = {}
                     magnet_err.bend_k_errors[prop_path[1]] = prop_val
+                    continue
+
+                # Special handling for SystematicMultipoleErrorSpec main_fse:
+                # prop_path is ["multipole", "main_fse", n_poles] where n_poles is an int.
+                # The error instance stores realized values in main_fse_errors, not main_fse.
+                if (
+                    len(prop_path) == 3
+                    and prop_path[0] == "multipole"
+                    and prop_path[1] == "main_fse"
+                ):
+                    n_poles = prop_path[2]
+                    self.ring[ei]["magnet"].multipole.main_fse_errors[
+                        n_poles
+                    ] = prop_val
                     continue
 
                 magnet_err = self.ring[ei]["magnet"]
@@ -1716,11 +1727,11 @@ class Errors:
 
                 mpole_err = v.multipole
 
-                # Check if this is a CSBEND with direct K-value errors (BendMultipoleErrorSpec)
+                # Check if this is a CSBEND with direct K-value errors (CsBendMultipoleErrorSpec)
                 has_bend_k_errors = hasattr(v, "bend_k_errors") and v.bend_k_errors
 
                 if has_bend_k_errors:
-                    # Handle CSBEND with direct K1-K8, KS1-KS8 parameters
+                    # Handle CSBEND with direct K1-K8 parameters
                     # Apply misalignment errors (offset, roll) first
                     misaligned = False
 
@@ -1774,21 +1785,41 @@ class Errors:
                     prop_str = elem_def[2]  # (elem_name, elem_type, prop_str)
                     design_props = self.indiv_LTE.parse_elem_properties(prop_str)
 
-                    # Apply main FSE to bending angle if specified
-                    if "main_fse" in v.bend_k_errors:
-                        main_fse = v.bend_k_errors["main_fse"]
-                        if main_fse != 0.0:
+                    # Apply FSE errors to CSBEND
+                    if "fse_all" in v.bend_k_errors:
+                        fse = v.bend_k_errors["fse_all"]
+                        if fse != 0.0:
+                            mods.append(
+                                dict(
+                                    elem_name=elem_name,
+                                    prop_name="FSE",
+                                    prop_val=f"{fse:.9e}",
+                                )
+                            )
+                    if "fse_dipole" in v.bend_k_errors:
+                        fse = v.bend_k_errors["fse_dipole"]
+                        if fse != 0.0:
                             mods.append(
                                 dict(
                                     elem_name=elem_name,
                                     prop_name="FSE_DIPOLE",
-                                    prop_val=f"{main_fse:.9e}",
+                                    prop_val=f"{fse:.9e}",
+                                )
+                            )
+                    if "fse_quad" in v.bend_k_errors:
+                        fse = v.bend_k_errors["fse_quad"]
+                        if fse != 0.0:
+                            mods.append(
+                                dict(
+                                    elem_name=elem_name,
+                                    prop_name="FSE_QUADRUPOLE",
+                                    prop_val=f"{fse:.9e}",
                                 )
                             )
 
                     # Apply K-value multipole errors additively to CSBEND design parameters
                     for k_param, k_error in v.bend_k_errors.items():
-                        if k_param == "main_fse":
+                        if k_param in ("fse_all", "fse_dipole", "fse_quad"):
                             # Already handled above
                             continue
                         # Get design K-value (default to 0.0 if not present)
@@ -1801,7 +1832,7 @@ class Errors:
                             mods.append(
                                 dict(
                                     elem_name=elem_name,
-                                    prop_name=k_param,  # K1, K2, ..., KS1, KS2, ...
+                                    prop_name=k_param,  # K1, K2, ..., K8
                                     prop_val=f"{total_k_val:.9e}",
                                 )
                             )
@@ -1809,7 +1840,7 @@ class Errors:
                     # Skip the normal multipole error handling below
                     continue
 
-                # Normal handling for MultipoleErrorSpec
+                # Normal handling for SystematicMultipoleErrorSpec
                 if mpole_err is None:
                     # No multipole errors defined for this element
                     continue
@@ -1872,8 +1903,7 @@ class Errors:
                     )
 
                 if mpole_err.n_main_poles == 2:
-                    for n_poles, main_err in mpole_err.main_errors.items():
-                        fse = main_err.fse
+                    for n_poles, fse in mpole_err.main_fse_errors.items():
                         if fse == 0.0:
                             continue
 
@@ -1894,9 +1924,8 @@ class Errors:
                             )
                         )
                 elif mpole_err.n_main_poles in (4, 6, 8):
-                    for n_poles, main_err in mpole_err.main_errors.items():
+                    for n_poles, fse in mpole_err.main_fse_errors.items():
                         assert n_poles == mpole_err.n_main_poles
-                        fse = main_err.fse
                         if fse != 0.0:
                             mods.append(
                                 dict(
@@ -2184,11 +2213,14 @@ class AbstractFacility:
             co_noise=self._noise_spec_from_model(bpm_model.co_noise),
         )
 
-    def _bend_multipole_spec_from_model(
-        self, multipole_model: error_specs.BendMultipoleErrorSpecModel
-    ) -> BendMultipoleErrorSpec:
-        """Convert Pydantic BendMultipoleErrorSpecModel to BendMultipoleErrorSpec."""
-        return BendMultipoleErrorSpec(
+    def _csbend_multipole_spec_from_model(
+        self, multipole_model: error_specs.CsBendMultipoleErrorSpecModel
+    ) -> CsBendMultipoleErrorSpec:
+        """Convert Pydantic CsBendMultipoleErrorSpecModel to CsBendMultipoleErrorSpec."""
+        return CsBendMultipoleErrorSpec(
+            fse_all=self._tges_from_model(multipole_model.fse_all),
+            fse_dipole=self._tges_from_model(multipole_model.fse_dipole),
+            fse_quad=self._tges_from_model(multipole_model.fse_quad),
             K1=self._tges_from_model(multipole_model.K1),
             K2=self._tges_from_model(multipole_model.K2),
             K3=self._tges_from_model(multipole_model.K3),
@@ -2197,20 +2229,11 @@ class AbstractFacility:
             K6=self._tges_from_model(multipole_model.K6),
             K7=self._tges_from_model(multipole_model.K7),
             K8=self._tges_from_model(multipole_model.K8),
-            KS1=self._tges_from_model(multipole_model.KS1),
-            KS2=self._tges_from_model(multipole_model.KS2),
-            KS3=self._tges_from_model(multipole_model.KS3),
-            KS4=self._tges_from_model(multipole_model.KS4),
-            KS5=self._tges_from_model(multipole_model.KS5),
-            KS6=self._tges_from_model(multipole_model.KS6),
-            KS7=self._tges_from_model(multipole_model.KS7),
-            KS8=self._tges_from_model(multipole_model.KS8),
         )
 
     def _create_magnet_error_spec(
         self,
         magnet_model: Union[
-            error_specs.BendErrorSpecModel,
             error_specs.CsBendErrorSpecModel,
             error_specs.QuadErrorSpecModel,
             error_specs.SextErrorSpecModel,
@@ -2218,7 +2241,7 @@ class AbstractFacility:
         ],
         n_main_poles: int,
         main_normal: bool,
-        multipole_spec: Union[MultipoleErrorSpec, BendMultipoleErrorSpec, None] = None,
+        multipole_spec: Union[SystematicMultipoleErrorSpec, None] = None,
     ) -> MagnetErrorSpec:
         """Convert Pydantic magnet model to MagnetErrorSpec.
 
@@ -2229,53 +2252,43 @@ class AbstractFacility:
             Number of main poles for multipole error spec
         main_normal : bool
             Whether main multipole is normal (vs skew)
-        multipole_spec : MultipoleErrorSpec or BendMultipoleErrorSpec, optional
-            Pre-configured multipole spec (for secondary multipoles or bend multipoles).
+        multipole_spec : SystematicMultipoleErrorSpec, optional
+            Pre-configured multipole spec (for secondary multipoles).
             If None, creates basic spec with only main FSE.
-            For CsBendErrorSpecModel with multipole field, pass BendMultipoleErrorSpec.
+            Note: For CsBendErrorSpecModel, CsBendMultipoleErrorSpec is created
+            internally from the model, not passed as a parameter.
         """
-        # Handle CsBendErrorSpecModel with BendMultipoleErrorSpec
+        # Handle CsBendErrorSpecModel - ALWAYS uses CsBendMultipoleErrorSpec
+        # CSBEND elements cannot use SystematicMultipoleErrorSpec
         if isinstance(magnet_model, error_specs.CsBendErrorSpecModel):
-            if magnet_model.multipole is not None:
-                # Use BendMultipoleErrorSpec from model
-                bend_multipole_spec = self._bend_multipole_spec_from_model(
-                    magnet_model.multipole
-                )
-            else:
-                # No multipole errors specified, create empty spec
-                bend_multipole_spec = BendMultipoleErrorSpec()
+            # multipole_spec parameter must be None for CSBEND
+            assert multipole_spec is None, (
+                "CSBEND elements must use CsBendMultipoleErrorSpec, not SystematicMultipoleErrorSpec. "
+                "Do not pass multipole_spec parameter for CsBendErrorSpecModel."
+            )
 
-            # Set main FSE if specified
-            if magnet_model.multipole_main_fse is not None:
-                bend_multipole_spec.main_fse = self._tges_from_model(
-                    magnet_model.multipole_main_fse
-                )
+            # Create CsBendMultipoleErrorSpec from model's multipole field
+            # (includes fse_all, fse_dipole, fse_quad, and K1-K8)
+            csbend_multipole_spec = self._csbend_multipole_spec_from_model(
+                magnet_model.multipole
+            )
 
             return MagnetErrorSpec(
-                multipole=bend_multipole_spec,
+                multipole=csbend_multipole_spec,
                 offset=self._offset_spec_2d_from_model(magnet_model.offset),
                 rot=RotationSpec1D(roll=self._tges_from_model(magnet_model.roll)),
             )
 
-        # Handle regular magnets (Bend, Quad, Sext, Oct) with MultipoleErrorSpec
+        # Handle KQUAD, KSEXT and KOCT with SystematicMultipoleErrorSpec
         if multipole_spec is None:
-            multipole_spec = MultipoleErrorSpec(n_main_poles, main_normal)
+            multipole_spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal)
 
         # Set main FSE if specified
-        # BendErrorSpecModel has optional multipole_main_fse
-        # QuadErrorSpecModel, SextErrorSpecModel, OctErrorSpecModel have required main_fse
-        if hasattr(magnet_model, "main_fse"):
-            # Quad/Sext/Oct models
-            if magnet_model.main_fse.rms != 0.0:
-                multipole_spec.main_fse = self._tges_from_model(magnet_model.main_fse)
-        elif (
-            hasattr(magnet_model, "multipole_main_fse")
-            and magnet_model.multipole_main_fse is not None
-        ):
-            # Bend model
-            multipole_spec.main_fse = self._tges_from_model(
-                magnet_model.multipole_main_fse
-            )
+        # QuadErrorSpecModel, SextErrorSpecModel, OctErrorSpecModel have required fse
+        if hasattr(magnet_model, "fse"):
+            # Quad/Sext/Oct models or Bend models
+            if magnet_model.fse.rms != 0.0:
+                multipole_spec.set_main_fse(self._tges_from_model(magnet_model.fse))
 
         return MagnetErrorSpec(
             multipole=multipole_spec,
@@ -2514,7 +2527,7 @@ class NSLS2(AbstractFacility):
         # QUAD
         n_main_poles = 4
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(6, 2e-4)
         spec.set_secondary_skew(6, 2e-4)
         spec.set_secondary_norm(8, 2e-4)
@@ -2533,7 +2546,7 @@ class NSLS2(AbstractFacility):
         # HIQUAD (QM2)
         n_main_poles = 4
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(6, 3e-4)
         spec.set_secondary_skew(6, 1.5e-4)
         spec.set_secondary_norm(8, 2e-4)
@@ -2551,7 +2564,7 @@ class NSLS2(AbstractFacility):
         # SEXT
         n_main_poles = 6
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(2, 30e-4)
         spec.set_secondary_skew(2, 15e-4)
         spec.set_secondary_norm(8, 2.5e-4)
@@ -2571,7 +2584,7 @@ class NSLS2(AbstractFacility):
         # HISEXT (SM2)
         n_main_poles = 6
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(2, 15e-4)
         spec.set_secondary_skew(2, 10e-4)
         spec.set_secondary_norm(8, 3e-4)
@@ -2603,9 +2616,9 @@ class NSLS2(AbstractFacility):
         self.err.register_BPMs(self.elem_inds["BPM"], err_spec=spec)
 
     def register_bends(self):
-        """Register bend magnet errors using Pydantic spec (based on NSLS-II PDR Table 3.1.8)."""
+        """Register CSBEND magnet errors using Pydantic spec (based on NSLS-II PDR Table 3.1.8)."""
         spec = self._create_magnet_error_spec(
-            self.error_spec.bends,
+            self.error_spec.csbends,
             n_main_poles=2,
             main_normal=True,
         )
@@ -2629,11 +2642,8 @@ class NSLS2(AbstractFacility):
                 )
 
             # Set main FSE from Pydantic model (based on NSLS-II PDR Table 3.1.9)
-            if magnet_model.main_fse != 0.0:
-                main_err_spec = MainMultipoleErrorSpec(
-                    fse=TGES(rms=magnet_model.main_fse)
-                )
-                mp_err_spec.set_main_error_spec(main_err_spec)
+            if magnet_model.fse != 0.0:
+                mp_err_spec.set_main_fse(TGES(rms=magnet_model.fse))
 
             # Create full magnet error spec using helper
             spec = self._create_magnet_error_spec(
@@ -2795,7 +2805,7 @@ class NSLS2U(AbstractFacility):
         # PMQ
         n_main_poles = 2
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         if False:  # TO-BE-DETERMINED
             pass
         mp_err_specs["PMQ"] = spec
@@ -2803,7 +2813,7 @@ class NSLS2U(AbstractFacility):
         # EM-QUAD
         n_main_poles = 4
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         if False:  # TO-BE-DETERMINED
             spec.set_secondary_norm(6, 2e-4)
             spec.set_secondary_skew(6, 2e-4)
@@ -2823,7 +2833,7 @@ class NSLS2U(AbstractFacility):
         # SEXT
         n_main_poles = 6
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         if False:  # TO-BE-DETERMINED
             spec.set_secondary_norm(2, 30e-4)
             spec.set_secondary_skew(2, 15e-4)
@@ -2844,7 +2854,7 @@ class NSLS2U(AbstractFacility):
         # OCT
         n_main_poles = 8
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         if False:  # TO-BE-DETERMINED
             raise NotImplementedError
         mp_err_specs["OCT"] = spec
@@ -2858,17 +2868,17 @@ class NSLS2U(AbstractFacility):
     def register_bends(self):
         mp_err_specs = self.get_multipole_err_specs()
 
-        # PMQ uses bend's multipole_main_fse field
-        main_err_specs = {
-            4: MainMultipoleErrorSpec(
-                fse=self._tges_from_model(self.error_spec.bends.multipole_main_fse)
-            )
+        # PMQ: Combined-function magnets with dipole (2-pole) and quadrupole (4-pole)
+        # Set main pole to 2 (dipole, lowest order) and add both dipole and quad FSE
+        main_fse_specs = {
+            2: self._tges_from_model(self.error_spec.csbends.multipole.fse_dipole),
+            4: self._tges_from_model(self.error_spec.csbends.multipole.fse_quad),
         }
-        mp_err_specs["PMQ"].set_main_error_spec(main_err_specs)
+        mp_err_specs["PMQ"].set_main_fse(main_fse_specs)
 
         spec = self._create_magnet_error_spec(
-            self.error_spec.bends,
-            n_main_poles=4,
+            self.error_spec.csbends,
+            n_main_poles=2,  # Main pole is dipole (lowest order)
             main_normal=True,
             multipole_spec=mp_err_specs["PMQ"],
         )
@@ -2890,10 +2900,7 @@ class NSLS2U(AbstractFacility):
             if magnet_spec is None:
                 raise ValueError(f"Missing spec for magnet type: {mag_type}")
 
-            main_err_spec = MainMultipoleErrorSpec(
-                fse=self._tges_from_model(magnet_spec.main_fse)
-            )
-            v.set_main_error_spec(main_err_spec)
+            v.set_main_fse(self._tges_from_model(magnet_spec.fse))
 
         # Register magnets with error specs
         for mag_type, mp_err_spec in mp_err_specs.items():
@@ -3143,7 +3150,7 @@ class NSLS2CB(AbstractFacility):
         # QUAD
         n_main_poles = 4
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(6, 2e-4)
         spec.set_secondary_skew(6, 2e-4)
         spec.set_secondary_norm(8, 2e-4)
@@ -3162,7 +3169,7 @@ class NSLS2CB(AbstractFacility):
         # HIQUAD (QM2)
         n_main_poles = 4
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(6, 3e-4)
         spec.set_secondary_skew(6, 1.5e-4)
         spec.set_secondary_norm(8, 2e-4)
@@ -3180,7 +3187,7 @@ class NSLS2CB(AbstractFacility):
         # SEXT
         n_main_poles = 6
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(2, 30e-4)
         spec.set_secondary_skew(2, 15e-4)
         spec.set_secondary_norm(8, 2.5e-4)
@@ -3200,7 +3207,7 @@ class NSLS2CB(AbstractFacility):
         # HISEXT (SM2)
         n_main_poles = 6
         main_normal = True
-        spec = MultipoleErrorSpec(n_main_poles, main_normal, **common)
+        spec = SystematicMultipoleErrorSpec(n_main_poles, main_normal, **common)
         spec.set_secondary_norm(2, 15e-4)
         spec.set_secondary_skew(2, 10e-4)
         spec.set_secondary_norm(8, 3e-4)
@@ -3232,7 +3239,7 @@ class NSLS2CB(AbstractFacility):
 
     def register_bends(self):
         spec = self._create_magnet_error_spec(
-            self.error_spec.bends,
+            self.error_spec.csbends,
             n_main_poles=2,
             main_normal=True,
         )
@@ -3257,10 +3264,7 @@ class NSLS2CB(AbstractFacility):
             if magnet_spec is None:
                 raise ValueError(f"Missing spec for magnet type: {mag_type}")
 
-            main_err_spec = MainMultipoleErrorSpec(
-                fse=self._tges_from_model(magnet_spec.main_fse)
-            )
-            v.set_main_error_spec(main_err_spec)
+            v.set_main_fse(self._tges_from_model(magnet_spec.fse))
 
         # Register magnets with error specs
         for mag_type, mp_err_spec in mp_err_specs.items():
