@@ -639,6 +639,69 @@ class NSLS2CBErrorSpecModel(BaseModel):
         description="Complex bend (CSBEND) magnet error specifications with multipoles",
     )
 
+    CB_CB1: CsBendErrorSpecModel = Field(
+        default_factory=lambda: CsBendErrorSpecModel(
+            offset=OffsetSpecModel(
+                x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+            ),
+            roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
+            multipole=CsBendMultipoleErrorSpecModel(
+                fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+                # Example: Add quadrupole and sextupole errors
+                K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
+                K2=TGESModel(rms=0.3, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                K3=TGESModel(
+                    rms=25, rms_unit="m^{-4}", cutoff=1.0
+                ),  # Octupole component
+                # Other multipoles default to rms=0.0
+            ),
+        ),
+        description="Complex bend (CSBEND) CB_CB1 magnet error specifications with multipoles",
+    )
+
+    CB_CB2: CsBendErrorSpecModel = Field(
+        default_factory=lambda: CsBendErrorSpecModel(
+            offset=OffsetSpecModel(
+                x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+            ),
+            roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
+            multipole=CsBendMultipoleErrorSpecModel(
+                fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+                # Example: Add quadrupole and sextupole errors
+                K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
+                K2=TGESModel(rms=0.3, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                K3=TGESModel(
+                    rms=25, rms_unit="m^{-4}", cutoff=1.0
+                ),  # Octupole component
+                # Other multipoles default to rms=0.0
+            ),
+        ),
+        description="Complex bend (CSBEND) CB_CB2 magnet error specifications with multipoles",
+    )
+
+    CB_B: CsBendErrorSpecModel = Field(
+        default_factory=lambda: CsBendErrorSpecModel(
+            offset=OffsetSpecModel(
+                x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+            ),
+            roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
+            multipole=CsBendMultipoleErrorSpecModel(
+                fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+                # Example: Add quadrupole and sextupole errors
+                K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
+                K2=TGESModel(rms=0.3, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                K3=TGESModel(
+                    rms=25, rms_unit="m^{-4}", cutoff=1.0
+                ),  # Octupole component
+                # Other multipoles default to rms=0.0
+            ),
+        ),
+        description="Complex bend (CSBEND) CB_B magnet error specifications with multipoles",
+    )
+
     quads_sexts: Dict[str, SysMultMagnetErrorSpecModel] = Field(
         default_factory=lambda: {
             # Based on NSLS-II PDR Table 3.1.9 (main FSE)

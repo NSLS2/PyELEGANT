@@ -861,6 +861,14 @@ class Errors:
         assert isinstance(err_spec, MagnetErrorSpec)
 
         for ei in elem_inds:
+            # Normalize NumPy scalar types (and float-upcast artifacts) to plain int.
+            if isinstance(ei, (float, np.floating)):
+                if not np.isclose(ei, round(float(ei))):
+                    raise ValueError(f"Element index must be integer-valued: {ei}")
+                ei = int(round(float(ei)))
+            else:
+                ei = int(ei)
+
             if ei in self.magnets:
                 if not overwrite:
                     msg = f"Magnet error already specified for Element Index {ei}. Set `overwrite=True` to ignore this."
@@ -2349,7 +2357,8 @@ class AbstractFacility:
             # Pattern: quad_name: KQUAD, ... TILT=value, ...
             import re
 
-            pattern = rf"{sq_name}\s*:\s*(?:K)?QUAD[^&]*TILT\s*=\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)"
+            escaped_sq_name = re.escape(str(sq_name))
+            pattern = rf"\"?{escaped_sq_name}\"?\s*:\s*(?:K)?QUAD[^&]*TILT\s*=\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)"
             match = re.search(pattern, lte_text, re.IGNORECASE)
 
             if not match:
@@ -3065,14 +3074,40 @@ class NSLS2CB(AbstractFacility):
         elem_inds["BPM"] = _inds["x"]
 
         elem_inds["BEND"] = fsdb.get_bend_elem_inds()
-        assert (
-            len(elem_inds["BEND"]) == 60 - 2
-        )  # Two dipoles have been converted to complex bends
+        if self.lattice_type in ("day1_bare", "day1_3dw"):
+            assert len(elem_inds["BEND"]) == 60
+        else:
+            assert (
+                len(elem_inds["BEND"]) == 60 - 2
+            )  # Two dipoles have been converted to complex bends
 
-        elem_inds["COMPLEX_BEND"] = fsdb.get_complex_bend_elem_inds()
-        assert len(elem_inds["COMPLEX_BEND"]) == 3 * 7 * 2
+        if fsdb.lat_type in ("20251120_bare_CB", "20260107_bare_CB_highG"):
+            elem_inds["COMPLEX_BEND"] = fsdb.get_complex_bend_elem_inds()
+            assert len(elem_inds["COMPLEX_BEND"]) == 3 * 7 * 2
+        elif fsdb.lat_type in ("20260210_3dw", "20260212_3dw", "20260212_bare"):
+            _d = fsdb.get_complex_bend_elem_inds()
+            elem_inds["CB_CB1"] = _d["CB_CB1"]
+            elem_inds["CB_CB2"] = _d["CB_CB2"]
+            elem_inds["CB_B"] = _d["CB_B"]
+            assert len(elem_inds["CB_CB1"]) == 4 * 2  # 4 poles x 2 bends
+            assert len(elem_inds["CB_CB2"]) == 4 * 2  # 4 poles x 2 bends
+            assert (
+                len(elem_inds["CB_B"]) == (3 + 2 * 3 + 3) * 2
+            )  # 12 (= 3 + 2+2+2 + 3) poles x 2 bends
+        elif fsdb.lat_type in ("day1_bare", "day1_3dw"):
+            pass
+        else:
+            raise NotImplementedError
 
-        if self.lattice_type in ("20251120_bare_CB", "20260107_bare_CB_highG"):
+        if self.lattice_type in (
+            "20251120_bare_CB",
+            "20260107_bare_CB_highG",
+            "20260210_3dw",
+            "20260212_3dw",
+            "20260212_bare",
+            "day1_bare",
+            "day1_3dw",
+        ):
             elem_inds["QUAD"] = np.sort(
                 np.hstack(
                     [
@@ -3247,12 +3282,24 @@ class NSLS2CB(AbstractFacility):
 
     def register_complex_bends(self):
         """Register complex bends (CSBEND) with multipole errors."""
-        spec = self._create_magnet_error_spec(
-            self.error_spec.complex_bends,
-            n_main_poles=2,  # Dipole
-            main_normal=True,
-        )
-        self.err.register_magnets(self.elem_inds["COMPLEX_BEND"], err_spec=spec)
+        if self.fsdb.lat_type in ("20260210_3dw", "20260212_3dw", "20260212_bare"):
+            # Handle different complex bend types
+            for mag_type in ["CB_CB1", "CB_CB2", "CB_B"]:
+                spec = self._create_magnet_error_spec(
+                    getattr(self.error_spec, mag_type),
+                    n_main_poles=2,  # Dipole
+                    main_normal=True,
+                )
+                self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
+        elif self.fsdb.lat_type in ("day1_bare", "day1_3dw"):
+            pass
+        else:
+            spec = self._create_magnet_error_spec(
+                self.error_spec.complex_bends,
+                n_main_poles=2,  # Dipole
+                main_normal=True,
+            )
+            self.err.register_magnets(self.elem_inds["COMPLEX_BEND"], err_spec=spec)
 
     def register_quads_sexts(self):
         mp_err_specs = self.get_multipole_err_specs()

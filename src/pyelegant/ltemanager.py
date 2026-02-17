@@ -1092,7 +1092,7 @@ class Lattice:
         elem_inds_list = elem_map[elem_name]
 
         if output_type == OutputType.NumPy:
-            return np.array(elem_inds_list)
+            return np.array(elem_inds_list, dtype=int)
         else:
             return elem_inds_list
 
@@ -1109,7 +1109,8 @@ class Lattice:
         for name in elem_names:
             elem_inds += self.get_elem_inds_from_name(name, output_type=OutputType.List)
 
-        elem_inds = np.sort(elem_inds)
+        # Keep integer dtype even for empty matches (NumPy defaults to float for []).
+        elem_inds = np.array(np.sort(elem_inds), dtype=int)
 
         if output_type == OutputType.NumPy:
             return elem_inds
@@ -2174,7 +2175,15 @@ class NSLS2CB(AbstractFacility):
     def __init__(self, LTE: Lattice, lattice_type: str = "20251120_bare_CB"):
         super().__init__(LTE, lattice_type)
 
-        assert self.lat_type in ("20251120_bare_CB", "20260107_bare_CB_highG")
+        assert self.lat_type in (
+            "20251120_bare_CB",
+            "20260107_bare_CB_highG",
+            "20260210_3dw",
+            "20260212_3dw",
+            "20260212_bare",
+            "day1_bare",
+            "day1_3dw",
+        )
 
         self.E_MeV = 3e3
         self.harmonic_number = 1320
@@ -2235,7 +2244,12 @@ class NSLS2CB(AbstractFacility):
 
         LTE = self.LTE
         inds = LTE.get_elem_inds_from_regex(r"^B[12]\w+$")
-        assert len(inds) == 30 * 2 - 2  # 2 bends have been converted to complex bends
+        if self.lat_type in ("day1_bare", "day1_3dw"):
+            assert len(inds) == 30 * 2
+        else:
+            assert (
+                len(inds) == 30 * 2 - 2
+            )  # 2 bends have been converted to complex bends
 
         return inds
 
@@ -2243,12 +2257,43 @@ class NSLS2CB(AbstractFacility):
         """Get the element indexes for complex bends"""
 
         LTE = self.LTE
-        inds = LTE.get_elem_inds_from_regex(r"^CB[12]_[1-3]_\d+$")
-        assert len(inds) == 3 * 7 * 2  # 3 poles x 7 modules x 2 bends
 
-        # LTE.get_names_from_elem_inds(inds)
+        assert self.lat_type in (
+            "20251120_bare_CB",
+            "20260107_bare_CB_highG",
+            "20260210_3dw",
+            "20260212_3dw",
+            "20260212_bare",
+        )
 
-        return inds
+        if self.lat_type in ("20251120_bare_CB", "20260107_bare_CB_highG"):
+            inds = LTE.get_elem_inds_from_regex(r"^CB[12]_[1-3]_\d+$")
+            assert len(inds) == 3 * 7 * 2  # 3 poles x 7 modules x 2 bends
+            return inds
+        elif self.lat_type in ("20260210_3dw",):
+            inds_d = {}
+            inds_d["CB_CB1"] = LTE.get_elem_inds_from_regex(r"^CB1_")
+            assert len(inds_d["CB_CB1"]) == 4 * 2  # 4 poles x 2 bends
+            inds_d["CB_CB2"] = LTE.get_elem_inds_from_regex(r"^CB2_")
+            assert len(inds_d["CB_CB2"]) == 4 * 2  # 4 poles x 2 bends
+            inds_d["CB_B"] = LTE.get_elem_inds_from_regex(r"^B_\d+")
+            assert (
+                len(inds_d["CB_B"]) == (3 + 2 * 3 + 3) * 2
+            )  # 12 (= 3 + 2+2+2 + 3) poles x 2 bends
+            return inds_d
+        elif self.lat_type in ("20260212_3dw", "20260212_bare"):
+            inds_d = {}
+            inds_d["CB_CB1"] = LTE.get_elem_inds_from_regex(r"^BCB1_")
+            assert len(inds_d["CB_CB1"]) == 4 * 2  # 4 poles x 2 bends
+            inds_d["CB_CB2"] = LTE.get_elem_inds_from_regex(r"^BCB2_")
+            assert len(inds_d["CB_CB2"]) == 4 * 2  # 4 poles x 2 bends
+            inds_d["CB_B"] = LTE.get_elem_inds_from_regex(r"^B_\d+")
+            assert (
+                len(inds_d["CB_B"]) == (3 + 2 * 3 + 3) * 2
+            )  # 12 (= 3 + 2+2+2 + 3) poles x 2 bends
+            return inds_d
+        else:
+            raise NotImplementedError
 
     def get_bend_names(self):
         """Get the names for bends"""
@@ -2266,9 +2311,9 @@ class NSLS2CB(AbstractFacility):
 
         inds = LTE.get_elem_inds_from_regex(r"^Q[HLM]\w+$")
 
-        if self.lat_type == "C26_double_mini_beta":
-            inds = np.append(inds, LTE.get_elem_inds_from_regex(r"^Q[FD]H*C26[AB]$"))
-            inds = np.sort(inds)
+        # if self.lat_type == "C26_double_mini_beta":
+        #     inds = np.append(inds, LTE.get_elem_inds_from_regex(r"^Q[FD]H*C26[AB]$"))
+        #     inds = np.sort(inds)
 
         normal_quad_names = LTE.get_names_from_elem_inds(inds)
         assert len(normal_quad_names) == len(np.unique(normal_quad_names))
@@ -2281,10 +2326,16 @@ class NSLS2CB(AbstractFacility):
                 300 + 4,  # QF split in half
             )
 
-        # For this LTE, the skew quad elements are NOT split into half.
         inds = LTE.get_elem_inds_from_regex(r"^SQ[HM]\w+$")
         skew_quad_names = LTE.get_names_from_elem_inds(inds)
-        assert len(skew_quad_names) == 30
+        if self.lat_type in ("20260107_bare_CB_highG", "20260212_bare", "day1_bare"):
+            # For this LTE, the skew quad elements are NOT split into half.
+            assert len(skew_quad_names) == 30
+        elif self.lat_type in ("20260210_3dw", "20260212_3dw", "day1_3dw"):
+            # For this LTE, the skew quad elements ARE split into half.
+            assert len(skew_quad_names) == 60
+        else:
+            raise NotImplementedError
 
         if flat_skew_quad_names:
             if len(skew_quad_names) == len(np.unique(skew_quad_names)):
