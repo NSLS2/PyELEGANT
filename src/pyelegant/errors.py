@@ -3294,6 +3294,9 @@ class NSLS2CB(AbstractFacility):
         elif self.fsdb.lat_type in ("day1_bare", "day1_3dw"):
             pass
         else:
+            raise NotImplementedError(
+                "`complex_bends` spec should not be used for this lattice."
+            )
             spec = self._create_magnet_error_spec(
                 self.error_spec.complex_bends,
                 n_main_poles=2,  # Dipole

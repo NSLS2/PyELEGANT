@@ -636,7 +636,7 @@ class NSLS2CBErrorSpecModel(BaseModel):
                 # Other multipoles default to rms=0.0
             ),
         ),
-        description="Complex bend (CSBEND) magnet error specifications with multipoles",
+        description="Complex bend (CSBEND) magnet error specifications with multipoles (NOT being used)",
     )
 
     CB_CB1: CsBendErrorSpecModel = Field(
@@ -648,11 +648,12 @@ class NSLS2CBErrorSpecModel(BaseModel):
             roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
             multipole=CsBendMultipoleErrorSpecModel(
                 fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+                fse_quad=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
                 # Example: Add quadrupole and sextupole errors
-                K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
-                K2=TGESModel(rms=0.3, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                # K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
+                K2=TGESModel(rms=0.7, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
                 K3=TGESModel(
-                    rms=25, rms_unit="m^{-4}", cutoff=1.0
+                    rms=150, rms_unit="m^{-4}", cutoff=1.0
                 ),  # Octupole component
                 # Other multipoles default to rms=0.0
             ),
@@ -669,11 +670,12 @@ class NSLS2CBErrorSpecModel(BaseModel):
             roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
             multipole=CsBendMultipoleErrorSpecModel(
                 fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
+                fse_quad=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
                 # Example: Add quadrupole and sextupole errors
-                K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
-                K2=TGESModel(rms=0.3, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                # K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
+                K2=TGESModel(rms=0.7, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
                 K3=TGESModel(
-                    rms=25, rms_unit="m^{-4}", cutoff=1.0
+                    rms=150, rms_unit="m^{-4}", cutoff=1.0
                 ),  # Octupole component
                 # Other multipoles default to rms=0.0
             ),
@@ -691,10 +693,10 @@ class NSLS2CBErrorSpecModel(BaseModel):
             multipole=CsBendMultipoleErrorSpecModel(
                 fse_dipole=TGESModel(rms=1e-3, rms_unit="", cutoff=1.0),
                 # Example: Add quadrupole and sextupole errors
-                K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
-                K2=TGESModel(rms=0.3, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
+                # K1=TGESModel(rms=1e-3, rms_unit="m^{-2}", cutoff=1.0),  # Quad component
+                K2=TGESModel(rms=0.7, rms_unit="m^{-3}", cutoff=1.0),  # Sext component
                 K3=TGESModel(
-                    rms=25, rms_unit="m^{-4}", cutoff=1.0
+                    rms=150, rms_unit="m^{-4}", cutoff=1.0
                 ),  # Octupole component
                 # Other multipoles default to rms=0.0
             ),
