@@ -584,23 +584,23 @@ class NSLS2CBErrorSpecModel(BaseModel):
         default_factory=lambda: BPMErrorSpecModel(
             # Some (not all) based on NSLS-II PDR Table 3.1.4
             offset=OffsetSpecModel(
-                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
-                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
+                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
             ),
             gain=GainSpecModel(
-                x=TGESModel(rms=5e-2, rms_unit="", cutoff=2.0),
-                y=TGESModel(rms=5e-2, rms_unit="", cutoff=2.0),
+                x=TGESModel(rms=5e-2, rms_unit="", cutoff=1.0),
+                y=TGESModel(rms=5e-2, rms_unit="", cutoff=1.0),
             ),
             rot=RotationSpecModel(
-                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0)
+                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0)
             ),
             tbt_noise=NoiseSpecModel(
-                x=TGESModel(rms=3e-6, rms_unit="m", cutoff=2.0),
-                y=TGESModel(rms=3e-6, rms_unit="m", cutoff=2.0),
+                x=TGESModel(rms=3e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=3e-6, rms_unit="m", cutoff=1.0),
             ),
             co_noise=NoiseSpecModel(
-                x=TGESModel(rms=0.1e-6, rms_unit="m", cutoff=2.0),
-                y=TGESModel(rms=0.1e-6, rms_unit="m", cutoff=2.0),
+                x=TGESModel(rms=0.1e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=0.1e-6, rms_unit="m", cutoff=1.0),
             ),
         ),
         description="BPM error specifications",
@@ -610,10 +610,10 @@ class NSLS2CBErrorSpecModel(BaseModel):
         default_factory=lambda: CsBendErrorSpecModel(
             # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4)
             offset=OffsetSpecModel(
-                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
-                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
+                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
             ),
-            roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=2.0),
+            roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
         ),
         description="CSBEND magnet error specifications",
     )
@@ -710,34 +710,34 @@ class NSLS2CBErrorSpecModel(BaseModel):
             # Based on NSLS-II PDR Table 3.1.8 (and 3.1.4) (offset and roll)
             "QUAD": QuadErrorSpecModel(
                 offset=OffsetSpecModel(
-                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
-                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
+                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
                 ),
-                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
+                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0),
                 # fse defaults to 2.5e-4 from QuadErrorSpecModel
             ),
             "HIQUAD": QuadErrorSpecModel(
                 offset=OffsetSpecModel(
-                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
-                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
+                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
                 ),
-                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
+                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0),
                 # fse defaults to 2.5e-4 from QuadErrorSpecModel
             ),
             "SEXT": SextErrorSpecModel(
                 offset=OffsetSpecModel(
-                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
-                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
+                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
                 ),
-                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
+                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0),
                 # fse defaults to 5e-4 from SextErrorSpecModel
             ),
             "HISEXT": SextErrorSpecModel(
                 offset=OffsetSpecModel(
-                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
-                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=2.0),
+                    x=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
+                    y=TGESModel(rms=30e-6, rms_unit="m", cutoff=1.0),
                 ),
-                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=2.0),
+                roll=TGESModel(rms=0.2e-3, rms_unit="rad", cutoff=1.0),
                 # fse defaults to 5e-4 from SextErrorSpecModel
             ),
         },
@@ -748,14 +748,14 @@ class NSLS2CBErrorSpecModel(BaseModel):
         default_factory=lambda: GirderErrorSpecModel(
             # Based on NSLS-II PDR Table 3.1.8
             us_offset=OffsetSpec3DModel(
-                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
-                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
+                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
             ),
             ds_offset=OffsetSpec3DModel(
-                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
-                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=2.0),
+                x=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
+                y=TGESModel(rms=100e-6, rms_unit="m", cutoff=1.0),
             ),
-            roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=2.0),
+            roll=TGESModel(rms=0.5e-3, rms_unit="rad", cutoff=1.0),
             chain_constraints=None,
         ),
         description="Girder support error specifications",

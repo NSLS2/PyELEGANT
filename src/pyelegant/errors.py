@@ -3180,7 +3180,7 @@ class NSLS2CB(AbstractFacility):
 
         mp_err_specs = {}
 
-        common = dict(secondary_ref_radius=25e-3, secondary_cutoff=2.0)  # [m]
+        common = dict(secondary_ref_radius=25e-3, secondary_cutoff=1.0)  # [m]
 
         # QUAD
         n_main_poles = 4
