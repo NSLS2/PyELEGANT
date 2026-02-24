@@ -2384,12 +2384,15 @@ class NSLS2CB(AbstractFacility):
         LTE = self.LTE
 
         inds = LTE.get_elem_inds_from_regex(r"^S[HLM]\w+$")
-        assert len(inds) == 270 - 6  # 6 sextupoles have been renamed to "CBSH*"
+        if self.lat_type in ("day1_bare", "day1_3dw"):
+            assert len(inds) == 270
+        else:
+            assert len(inds) == 270 - 6  # 6 sextupoles have been renamed to "CBSH*"
 
-        dedicated_inds = LTE.get_elem_inds_from_regex(r"^CBSH[1-4]\w+$")
-        assert len(dedicated_inds) == 6
+            dedicated_inds = LTE.get_elem_inds_from_regex(r"^CBSH[1-4]\w+$")
+            assert len(dedicated_inds) == 6
 
-        inds = np.sort(np.concatenate((inds, dedicated_inds)))
+            inds = np.sort(np.concatenate((inds, dedicated_inds)))
 
         return inds
 
