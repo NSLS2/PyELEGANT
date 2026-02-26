@@ -48,6 +48,7 @@ class TbTLinOptCorrector:
         RM_filepath: Union[Path, str] = "",
         RM_obs_weights: Union[Dict, None] = None,
         max_beta_beat_thresh_for_coup_cor: float = 5e-2,
+        required_tune_sep: float = 0.02,
         rcond: float = 1e-4,
         N_KICKS: Union[None, Dict] = None,
         tempdir_path: Union[None, Path, str] = None,
@@ -140,6 +141,7 @@ class TbTLinOptCorrector:
             self._construct_RM(RM_filepath, obs_weights=RM_obs_weights, rcond=rcond)
 
         self.max_beta_beat_thresh_for_coup_cor = max_beta_beat_thresh_for_coup_cor
+        self.required_tune_sep = required_tune_sep
 
     def make_tempdir(self, tempdir_path=None):
         if isinstance(tempdir_path, Path):
@@ -1480,11 +1482,73 @@ class TbTLinOptCorrector:
         self.quad_props = pickle.loads(self._backup_quad_setpoints)
         self._uncommited_quad_change = True
 
+    def separate_tunes_if_needed(self, rcond=1e-4):
+        if not hasattr(self, "RM") or "nux" not in self.RM:
+            return
+
+        frac_nu = {}
+        for plane in ("x", "y"):
+            frac_nu[plane] = self.twiss["actual"][f"nu{plane}"]
+            frac_nu[plane] -= np.floor(frac_nu[plane])
+            if self.tune_above_half["actual"][plane]:
+                frac_nu[plane] = 1 - frac_nu[plane]
+
+        tune_sep = abs(frac_nu["x"] - frac_nu["y"])
+        if tune_sep >= self.required_tune_sep:
+            return
+
+        print(
+            f"\n! Tune separation too small (|nux-nuy| = {tune_sep:.4f} < "
+            f"{self.required_tune_sep:.4f}). Adjusting quads to separate tunes..."
+        )
+
+        dnu_desired = self.required_tune_sep - tune_sep
+        if frac_nu["x"] >= frac_nu["y"]:
+            desired_dnux = +dnu_desired / 2
+            desired_dnuy = -dnu_desired / 2
+        else:
+            desired_dnux = -dnu_desired / 2
+            desired_dnuy = +dnu_desired / 2
+
+        b = np.array([desired_dnux, desired_dnuy])
+
+        n_normal = len(self.quad_col2names["normal"])
+        A = np.vstack(
+            [
+                self.RM["nux"][:n_normal],
+                self.RM["nuy"][:n_normal],
+            ]
+        )
+
+        U, sv, VT = calcSVD(A)
+        Sinv_trunc = calcTruncSVMatrix(sv, rcond=rcond, nsv=None, disp=0)
+        A_pinv = VT.T @ Sinv_trunc @ U.T
+        dK1 = A_pinv @ b
+
+        for names, dk1 in zip(self.quad_col2names["normal"], dK1):
+            self.change_K1_setpoint_by(names, dk1)
+        self.update_actual_twiss()
+
+        new_frac_nux = self.twiss["actual"]["nux"]
+        new_frac_nux -= np.floor(new_frac_nux)
+        if self.tune_above_half["actual"]["x"]:
+            new_frac_nux = 1 - new_frac_nux
+        new_frac_nuy = self.twiss["actual"]["nuy"]
+        new_frac_nuy -= np.floor(new_frac_nuy)
+        if self.tune_above_half["actual"]["y"]:
+            new_frac_nuy = 1 - new_frac_nuy
+        print(
+            f"\n! Tune separation after adjustment: "
+            f"nux={new_frac_nux:.4f}, nuy={new_frac_nuy:.4f}, "
+            f"|nux-nuy|={abs(new_frac_nux - new_frac_nuy):.4f}"
+        )
+
     def observe(self):
         if "design" not in self.tbt_avg_nu:
             self.calc_design_lin_comp()
 
         self.update_actual_twiss()
+        self.separate_tunes_if_needed()
         self.calc_actual_lin_comp()
 
         hist = self._actual_design_diff_history
