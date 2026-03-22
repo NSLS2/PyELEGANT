@@ -24,7 +24,7 @@ def _scrape_elem_prop_tables(url):
 
         dash_like_char = chr(8212)
         section_number, elem_type, description = re.match(
-            f"(\d+\.\d+)\s+(\w+){dash_like_char}(.+)", page_title
+            rf"(\d+\.\d+)\s+(\w+){dash_like_char}(.+)", page_title
         ).groups()
         page_title = dict(
             section_number=section_number, elem_type=elem_type, description=description

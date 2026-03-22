@@ -1,16 +1,16 @@
-import shlex
-from subprocess import Popen, PIPE
-import re
 import argparse
 import getpass
+import re
+import shlex
+from subprocess import PIPE, Popen
+
 
 def chained_Popen(cmd_list):
     """"""
 
     if len(cmd_list) == 1:
         cmd = cmd_list[0]
-        p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE,
-                  encoding='utf-8')
+        p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding="utf-8")
 
     else:
         cmd = cmd_list[0]
@@ -18,49 +18,61 @@ def chained_Popen(cmd_list):
         for cmd in cmd_list[1:-1]:
             p = Popen(shlex.split(cmd), stdin=p.stdout, stdout=PIPE, stderr=PIPE)
         cmd = cmd_list[-1]
-        p = Popen(shlex.split(cmd), stdin=p.stdout, stdout=PIPE, stderr=PIPE,
-                  encoding='utf-8')
+        p = Popen(
+            shlex.split(cmd), stdin=p.stdout, stdout=PIPE, stderr=PIPE, encoding="utf-8"
+        )
 
     out, err = p.communicate()
 
     return out, err, p.returncode
 
+
 def print_queue():
     """"""
 
     cmd = 'squeue -o "%.9i %.9P %.18j %.8u %.2t %.10M %.10L %.6D %.4C %R"'
-    p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding='utf-8')
+    p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding="utf-8")
     out, err = p.communicate()
 
     print(out)
 
+
 def print_load():
     """"""
 
-    cmd = 'scontrol show node'
-    p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding='utf-8')
+    cmd = "scontrol show node"
+    p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding="utf-8")
     out, err = p.communicate()
 
     parsed = re.findall(
-        'NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)',
-        out)
+        r"NodeName=([\w\d\-]+)\s+[\w=\s]+CPUAlloc=(\d+)\s+CPUTot=(\d+)\s+CPULoad=([\d\.N/A]+)",
+        out,
+    )
 
     nMaxNodeNameLen = max(
-        [len(s) for s in list(list(zip(*parsed))[0]) +
-         ['apcpu-[001-005]', 'cpu-[019-026]',
-          'cpu-[002-005],[007-015]']])
+        [
+            len(s)
+            for s in list(list(zip(*parsed))[0])
+            + ["apcpu-[001-005]", "cpu-[019-026]", "cpu-[002-005],[007-015]"]
+        ]
+    )
 
-    node_name = 'Node-Name'
-    print(f'#{node_name:>{nMaxNodeNameLen:d}s} :: Alloc / Tot :: CPU Load')
+    node_name = "Node-Name"
+    print(f"#{node_name:>{nMaxNodeNameLen:d}s} :: Alloc / Tot :: CPU Load")
     for node_name, nAlloc, nTot, cpu_load in parsed:
-        print(f'{node_name:>{nMaxNodeNameLen+1:d}s} :: {nAlloc:>5s} / {nTot:>3s} :: {cpu_load:>7s}')
-    print('###################################################')
+        print(
+            f"{node_name:>{nMaxNodeNameLen+1:d}s} :: {nAlloc:>5s} / {nTot:>3s} :: {cpu_load:>7s}"
+        )
+    print("###################################################")
     for combined_node_name, _template, node_num_range in (
-        ['apcpu-[001-005]', 'apcpu-{:03d}', range(1, 5+1)],
-        ['cpu-[019-026]', 'cpu-{:03d}', range(19, 26+1)],
-        ['cpu-[002-005],[007-015]', 'cpu-{:03d}',
-         list(range(2, 5+1)) + list(range(7, 15+1))],
-        ):
+        ["apcpu-[001-005]", "apcpu-{:03d}", range(1, 5 + 1)],
+        ["cpu-[019-026]", "cpu-{:03d}", range(19, 26 + 1)],
+        [
+            "cpu-[002-005],[007-015]",
+            "cpu-{:03d}",
+            list(range(2, 5 + 1)) + list(range(7, 15 + 1)),
+        ],
+    ):
 
         _nAlloc = _nTot = _cpu_load = 0
         node_list = [_template.format(i) for i in node_num_range]
@@ -68,55 +80,63 @@ def print_load():
             if node_name in node_list:
                 _nAlloc += int(nAlloc)
                 _nTot += int(nTot)
-                if cpu_load != 'N/A':
+                if cpu_load != "N/A":
                     _cpu_load += float(cpu_load)
                 else:
-                    _cpu_load += float('nan')
-        nAlloc = '{:d}'.format(_nAlloc)
-        nTot = '{:d}'.format(_nTot)
-        cpu_load = '{:.2f}'.format(_cpu_load)
+                    _cpu_load += float("nan")
+        nAlloc = "{:d}".format(_nAlloc)
+        nTot = "{:d}".format(_nTot)
+        cpu_load = "{:.2f}".format(_cpu_load)
         node_name = combined_node_name
-        print(f'{node_name:>{nMaxNodeNameLen+1:d}s} :: {nAlloc:>5s} / {nTot:>3s} :: {cpu_load:>7s}')
+        print(
+            f"{node_name:>{nMaxNodeNameLen+1:d}s} :: {nAlloc:>5s} / {nTot:>3s} :: {cpu_load:>7s}"
+        )
+
 
 def scancel_by_regex_jobname():
-    """
-    """
+    """ """
 
     parser = argparse.ArgumentParser(
-        prog='pyele_slurm_scancel_regex_job_name',
-        description='SLURM scancel command enhanced with regular experssion pattern matching')
-    parser.add_argument('job_name_pattern', type=str,
-                        help='act only on jobs whose names match this regex pattern')
+        prog="pyele_slurm_scancel_regex_job_name",
+        description="SLURM scancel command enhanced with regular experssion pattern matching",
+    )
     parser.add_argument(
-        '-d', '--dryrun', default=False, action='store_true',
-        help='Print which JOB IDs will be terminated without actually doing so.')
+        "job_name_pattern",
+        type=str,
+        help="act only on jobs whose names match this regex pattern",
+    )
+    parser.add_argument(
+        "-d",
+        "--dryrun",
+        default=False,
+        action="store_true",
+        help="Print which JOB IDs will be terminated without actually doing so.",
+    )
 
     args = parser.parse_args()
 
     queue_cmd = f'squeue --user={getpass.getuser()} -o "%.9i %.18j"'
 
-    cmd_list = [queue_cmd,
-                f'grep {args.job_name_pattern}']
+    cmd_list = [queue_cmd, f"grep {args.job_name_pattern}"]
 
     result, err, returncode = chained_Popen(cmd_list)
 
     if args.dryrun:
-        if result.strip() == '':
-            print('No job name match found. No jobs will be terminated.')
+        if result.strip() == "":
+            print("No job name match found. No jobs will be terminated.")
         else:
-            print('Only the following jobs will be terminated:')
-            print('(JOBID, NAME)')
+            print("Only the following jobs will be terminated:")
+            print("(JOBID, NAME)")
             print(result)
 
     else:
         job_ID_list = [L.split()[0].strip() for L in result.splitlines()]
 
-        cmd = 'scancel ' + ' '.join(job_ID_list)
+        cmd = "scancel " + " ".join(job_ID_list)
         print(f'Executing "$ {cmd}"')
-        p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding='utf-8')
+        p = Popen(shlex.split(cmd), stdout=PIPE, stderr=PIPE, encoding="utf-8")
         out, err = p.communicate()
         print(out)
         if err:
-            print('** stderr **')
+            print("** stderr **")
             print(err)
-

@@ -40,7 +40,7 @@ def get_slurm_partitions():
     out, err = p.communicate()
 
     parsed = {}
-    for k, v in re.findall("([\w\d]+)=([^\s]+)", out):
+    for k, v in re.findall(r"([\w\d]+)=([^\s]+)", out):
         if k == "PartitionName":
             d = parsed[v] = {}
         else:
@@ -897,7 +897,7 @@ class PageGenReport(PageStandard):
             if ("[" in v) or ("]" in v):
                 if ("[" in v) and ("]" in v):
                     try:
-                        list_strs = re.findall("\[[^\]]+\]", v)
+                        list_strs = re.findall(r"\[[^\]]+\]", v)
                         list_strs = [s[1:-1] for s in list_strs]  # remove "[" & "]"
                         rf_voltages = []
                         for list_s in list_strs:
@@ -2361,7 +2361,7 @@ def adjust_input_LTE_kickmap_filepaths(
 
         for ae in alter_elements:
             name = ae["name"]
-            pattern = f'({name})(\s*:\s*UKICKMAP\s*,)([^:]*)(INPUT_FILE\s*=\s*)"(.+)"'
+            pattern = rf'({name})(\s*:\s*UKICKMAP\s*,)([^:]*)(INPUT_FILE\s*=\s*)"(.+)"'
             LTE_contents = re.sub(
                 pattern,
                 partial(sub_kickmap_filepath, ae["string_value"]),
@@ -2372,7 +2372,7 @@ def adjust_input_LTE_kickmap_filepaths(
         if False:
             for ae in alter_elements:
                 name = ae["name"]
-                pattern = f'({name})\s*:\s*UKICKMAP\s*,([^:]*)INPUT_FILE\s*=\s*"(.+)"'
+                pattern = rf'({name})\s*:\s*UKICKMAP\s*,([^:]*)INPUT_FILE\s*=\s*"(.+)"'
                 out = re.findall(pattern, LTE_contents, flags=re.IGNORECASE)
                 print(out)
 
