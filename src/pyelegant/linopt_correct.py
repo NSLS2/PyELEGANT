@@ -1487,11 +1487,17 @@ class TbTLinOptCorrector:
             return
 
         frac_nu = {}
+        design_frac_nu = {}
         for plane in ("x", "y"):
             frac_nu[plane] = self.twiss["actual"][f"nu{plane}"]
             frac_nu[plane] -= np.floor(frac_nu[plane])
             if self.tune_above_half["actual"][plane]:
                 frac_nu[plane] = 1 - frac_nu[plane]
+
+            design_frac_nu[plane] = self.twiss["design"][f"nu{plane}"]
+            design_frac_nu[plane] -= np.floor(design_frac_nu[plane])
+            if self.tune_above_half["design"][plane]:
+                design_frac_nu[plane] = 1 - design_frac_nu[plane]
 
         tune_sep = abs(frac_nu["x"] - frac_nu["y"])
         if tune_sep >= self.required_tune_sep:
@@ -1502,8 +1508,18 @@ class TbTLinOptCorrector:
             f"{self.required_tune_sep:.4f}). Adjusting quads to separate tunes..."
         )
 
-        dnu_desired = self.required_tune_sep - tune_sep
-        if frac_nu["x"] >= frac_nu["y"]:
+        # Determine if ordering already matches design
+        design_nux_below = design_frac_nu["x"] < design_frac_nu["y"]
+        current_nux_below = frac_nu["x"] < frac_nu["y"]
+
+        if design_nux_below == current_nux_below:
+            # Same order: only need to open up by the remaining gap
+            dnu_desired = self.required_tune_sep - tune_sep
+        else:
+            # Reversed order: must cross AND achieve separation
+            dnu_desired = self.required_tune_sep + tune_sep
+
+        if design_frac_nu["x"] >= design_frac_nu["y"]:  # "design" wants nux > nuy
             desired_dnux = +dnu_desired / 2
             desired_dnuy = -dnu_desired / 2
         else:
