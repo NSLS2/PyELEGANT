@@ -1484,7 +1484,9 @@ class TbTLinOptCorrector:
         self.quad_props = pickle.loads(self._backup_quad_setpoints)
         self._uncommited_quad_change = True
 
-    def separate_tunes_if_needed(self, rcond=1e-4, tbt=None):
+    def separate_tunes_if_needed(
+        self, rcond=1e-4, tbt=None, max_attempts=8, correction_gain=0.7
+    ):
         if not hasattr(self, "RM") or "nux" not in self.RM:
             return tbt
 
@@ -1513,16 +1515,6 @@ class TbTLinOptCorrector:
                 RuntimeWarning,
             )
 
-        tbt_nux0, tbt_nuy0 = get_avg_tbt_tunes(tbt)
-        tune_sep = abs(tbt_nux0 - tbt_nuy0)
-        if tune_sep >= self.required_tune_sep:
-            return tbt
-
-        print(
-            f"\n! Tune separation too small (TbT: |nux-nuy| = {tune_sep:.4f} < "
-            f"{self.required_tune_sep:.4f}). Adjusting quads to separate tunes..."
-        )
-
         design_frac_nu = {}
         for plane in ("x", "y"):
             design_frac_nu[plane] = self.twiss["design"][f"nu{plane}"]
@@ -1530,66 +1522,102 @@ class TbTLinOptCorrector:
             if self.tune_above_half["design"][plane]:
                 design_frac_nu[plane] = 1 - design_frac_nu[plane]
 
-        # Determine if TbT-observed ordering already matches design.
         design_nux_below = design_frac_nu["x"] < design_frac_nu["y"]
-        current_nux_below = tbt_nux0 < tbt_nuy0
+        current_tbt = tbt
+        tbt_nux0, tbt_nuy0 = get_avg_tbt_tunes(current_tbt)
 
-        if design_nux_below == current_nux_below:
-            # Same order: only need to open up by the remaining gap
-            dnu_desired = self.required_tune_sep - tune_sep
-        else:
-            # Reversed order: must cross AND achieve separation
-            dnu_desired = self.required_tune_sep + tune_sep
+        for attempt in range(max_attempts + 1):
+            tune_sep = abs(tbt_nux0 - tbt_nuy0)
+            if tune_sep >= self.required_tune_sep:
+                if attempt > 0:
+                    print(
+                        f"\n! Tune separation reached target after {attempt} "
+                        f"adjustment(s): nux={tbt_nux0:.4f}, nuy={tbt_nuy0:.4f}, "
+                        f"|nux-nuy|={tune_sep:.4f}"
+                    )
+                return current_tbt
 
-        if design_frac_nu["x"] >= design_frac_nu["y"]:  # "design" wants nux > nuy
-            desired_dnux = +dnu_desired / 2
-            desired_dnuy = -dnu_desired / 2
-        else:
-            desired_dnux = -dnu_desired / 2
-            desired_dnuy = +dnu_desired / 2
+            if attempt == max_attempts:
+                warnings.warn(
+                    "Tune separation remained too small after "
+                    f"{max_attempts} adjustment(s): TbT nux={tbt_nux0:.4f}, "
+                    f"nuy={tbt_nuy0:.4f}, |nux-nuy|={tune_sep:.4f} < "
+                    f"{self.required_tune_sep:.4f}. Returning last TbT data.",
+                    RuntimeWarning,
+                )
+                return current_tbt
 
-        b = np.array([desired_dnux, desired_dnuy])
-
-        n_normal = len(self.quad_col2names["normal"])
-        A = np.vstack(
-            [
-                self.RM["nux"][:n_normal],
-                self.RM["nuy"][:n_normal],
-            ]
-        )
-
-        U, sv, VT = calcSVD(A)
-        Sinv_trunc = calcTruncSVMatrix(sv, rcond=rcond, nsv=None, disp=0)
-        A_pinv = VT.T @ Sinv_trunc @ U.T
-        dK1 = A_pinv @ b
-
-        for names, dk1 in zip(self.quad_col2names["normal"], dK1):
-            self.change_K1_setpoint_by(names, dk1)
-        self.update_actual_twiss()
-
-        new_tbt = self.calc_actual_tbt()
-        new_tbt_nux0, new_tbt_nuy0 = get_avg_tbt_tunes(new_tbt)
-        msg = (
-            f"\n! Tune separation after adjustment (TbT): "
-            f"nux={new_tbt_nux0:.4f}, nuy={new_tbt_nuy0:.4f}, "
-            f"|nux-nuy|={abs(new_tbt_nux0 - new_tbt_nuy0):.4f}"
-        )
-
-        if "actual" in self.twiss:
-            actual_frac_nu = {}
-            for plane in ("x", "y"):
-                actual_frac_nu[plane] = self.twiss["actual"][f"nu{plane}"]
-                actual_frac_nu[plane] -= np.floor(actual_frac_nu[plane])
-                if self.tune_above_half["actual"][plane]:
-                    actual_frac_nu[plane] = 1 - actual_frac_nu[plane]
-            msg += (
-                f" [model Twiss: nux={actual_frac_nu['x']:.4f}, "
-                f"nuy={actual_frac_nu['y']:.4f}, "
-                f"|nux-nuy|={abs(actual_frac_nu['x'] - actual_frac_nu['y']):.4f}]"
+            print(
+                f"\n! Tune separation too small (TbT: |nux-nuy| = {tune_sep:.4f} < "
+                f"{self.required_tune_sep:.4f}). Adjusting quads to separate tunes "
+                f"(attempt {attempt + 1}/{max_attempts})..."
             )
 
-        print(msg)
-        return new_tbt
+            # Determine if TbT-observed ordering already matches design.
+            current_nux_below = tbt_nux0 < tbt_nuy0
+
+            if design_nux_below == current_nux_below:
+                # Same order: only need to open up by the remaining gap.
+                dnu_desired = self.required_tune_sep - tune_sep
+            else:
+                # Reversed order: must cross AND achieve separation.
+                dnu_desired = self.required_tune_sep + tune_sep
+
+            if design_frac_nu["x"] >= design_frac_nu["y"]:  # "design" wants nux > nuy
+                desired_dnux = +correction_gain * dnu_desired / 2
+                desired_dnuy = -correction_gain * dnu_desired / 2
+            else:
+                desired_dnux = -correction_gain * dnu_desired / 2
+                desired_dnuy = +correction_gain * dnu_desired / 2
+
+            b = np.array([desired_dnux, desired_dnuy])
+            print(
+                f"! Requesting tune changes: dnux={desired_dnux:+.5f}, "
+                f"dnuy={desired_dnuy:+.5f} (gain={correction_gain:.3g})"
+            )
+
+            n_normal = len(self.quad_col2names["normal"])
+            A = np.vstack(
+                [
+                    self.RM["nux"][:n_normal],
+                    self.RM["nuy"][:n_normal],
+                ]
+            )
+
+            U, sv, VT = calcSVD(A)
+            Sinv_trunc = calcTruncSVMatrix(sv, rcond=rcond, nsv=None, disp=0)
+            A_pinv = VT.T @ Sinv_trunc @ U.T
+            dK1 = A_pinv @ b
+
+            for names, dk1 in zip(self.quad_col2names["normal"], dK1):
+                self.change_K1_setpoint_by(names, dk1)
+            self.update_actual_twiss()
+
+            current_tbt = self.calc_actual_tbt()
+            tbt_nux0, tbt_nuy0 = get_avg_tbt_tunes(current_tbt)
+            new_sep = abs(tbt_nux0 - tbt_nuy0)
+            msg = (
+                f"\n! Tune separation after adjustment {attempt + 1} (TbT): "
+                f"nux={tbt_nux0:.4f}, nuy={tbt_nuy0:.4f}, "
+                f"|nux-nuy|={new_sep:.4f}"
+            )
+
+            if "actual" in self.twiss:
+                actual_frac_nu = {}
+                for plane in ("x", "y"):
+                    actual_frac_nu[plane] = self.twiss["actual"][f"nu{plane}"]
+                    actual_frac_nu[plane] -= np.floor(actual_frac_nu[plane])
+                    if self.tune_above_half["actual"][plane]:
+                        actual_frac_nu[plane] = 1 - actual_frac_nu[plane]
+                msg += (
+                    f" [model Twiss: nux={actual_frac_nu['x']:.4f}, "
+                    f"nuy={actual_frac_nu['y']:.4f}, "
+                    f"|nux-nuy|={abs(actual_frac_nu['x'] - actual_frac_nu['y']):.4f}]"
+                )
+
+            print(msg)
+
+        return current_tbt
 
     def observe(self):
         if "design" not in self.tbt_avg_nu:
