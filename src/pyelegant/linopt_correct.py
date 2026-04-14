@@ -8,6 +8,7 @@ from subprocess import PIPE, Popen
 import tempfile
 import time
 from typing import Dict, List, Tuple, Union
+import warnings
 
 import h5py
 from matplotlib.backends.backend_pdf import PdfPages
@@ -935,8 +936,9 @@ class TbTLinOptCorrector:
             for plane in "xy"
         }
 
-    def calc_actual_lin_comp(self):
-        tbt = self.calc_actual_tbt()
+    def calc_actual_lin_comp(self, tbt=None):
+        if tbt is None:
+            tbt = self.calc_actual_tbt()
 
         expected_frac_nu = {}
         for plane in ("x", "y"):
@@ -1482,35 +1484,55 @@ class TbTLinOptCorrector:
         self.quad_props = pickle.loads(self._backup_quad_setpoints)
         self._uncommited_quad_change = True
 
-    def separate_tunes_if_needed(self, rcond=1e-4):
+    def separate_tunes_if_needed(self, rcond=1e-4, tbt=None):
         if not hasattr(self, "RM") or "nux" not in self.RM:
-            return
+            return tbt
 
-        frac_nu = {}
+        if tbt is None:
+            tbt = self.calc_actual_tbt()
+
+        def get_avg_tbt_tunes(tbt):
+            lin_comp = self.extract_lin_freq_components_from_multi_BPM_tbt(
+                tbt["x"], tbt["y"]
+            )
+            avg_tbt_nu = {}
+            for plane in ("x", "y"):
+                avg_tbt_nu[plane] = np.nanmean(lin_comp[f"nu{plane}"])
+                if not np.isfinite(avg_tbt_nu[plane]):
+                    raise RuntimeError(
+                        f"Failed to extract finite TbT nu{plane} value "
+                        "for tune separation check."
+                    )
+            return avg_tbt_nu["x"], avg_tbt_nu["y"]
+
+        if any(self.tune_above_half["design"][plane] for plane in ("x", "y")):
+            warnings.warn(
+                "separate_tunes_if_needed() currently assumes below-0.5 "
+                "fractional tunes; above-0.5 tune ordering/correction "
+                "direction may need modification.",
+                RuntimeWarning,
+            )
+
+        tbt_nux0, tbt_nuy0 = get_avg_tbt_tunes(tbt)
+        tune_sep = abs(tbt_nux0 - tbt_nuy0)
+        if tune_sep >= self.required_tune_sep:
+            return tbt
+
+        print(
+            f"\n! Tune separation too small (TbT: |nux-nuy| = {tune_sep:.4f} < "
+            f"{self.required_tune_sep:.4f}). Adjusting quads to separate tunes..."
+        )
+
         design_frac_nu = {}
         for plane in ("x", "y"):
-            frac_nu[plane] = self.twiss["actual"][f"nu{plane}"]
-            frac_nu[plane] -= np.floor(frac_nu[plane])
-            if self.tune_above_half["actual"][plane]:
-                frac_nu[plane] = 1 - frac_nu[plane]
-
             design_frac_nu[plane] = self.twiss["design"][f"nu{plane}"]
             design_frac_nu[plane] -= np.floor(design_frac_nu[plane])
             if self.tune_above_half["design"][plane]:
                 design_frac_nu[plane] = 1 - design_frac_nu[plane]
 
-        tune_sep = abs(frac_nu["x"] - frac_nu["y"])
-        if tune_sep >= self.required_tune_sep:
-            return
-
-        print(
-            f"\n! Tune separation too small (|nux-nuy| = {tune_sep:.4f} < "
-            f"{self.required_tune_sep:.4f}). Adjusting quads to separate tunes..."
-        )
-
-        # Determine if ordering already matches design
+        # Determine if TbT-observed ordering already matches design.
         design_nux_below = design_frac_nu["x"] < design_frac_nu["y"]
-        current_nux_below = frac_nu["x"] < frac_nu["y"]
+        current_nux_below = tbt_nux0 < tbt_nuy0
 
         if design_nux_below == current_nux_below:
             # Same order: only need to open up by the remaining gap
@@ -1545,27 +1567,38 @@ class TbTLinOptCorrector:
             self.change_K1_setpoint_by(names, dk1)
         self.update_actual_twiss()
 
-        new_frac_nux = self.twiss["actual"]["nux"]
-        new_frac_nux -= np.floor(new_frac_nux)
-        if self.tune_above_half["actual"]["x"]:
-            new_frac_nux = 1 - new_frac_nux
-        new_frac_nuy = self.twiss["actual"]["nuy"]
-        new_frac_nuy -= np.floor(new_frac_nuy)
-        if self.tune_above_half["actual"]["y"]:
-            new_frac_nuy = 1 - new_frac_nuy
-        print(
-            f"\n! Tune separation after adjustment: "
-            f"nux={new_frac_nux:.4f}, nuy={new_frac_nuy:.4f}, "
-            f"|nux-nuy|={abs(new_frac_nux - new_frac_nuy):.4f}"
+        new_tbt = self.calc_actual_tbt()
+        new_tbt_nux0, new_tbt_nuy0 = get_avg_tbt_tunes(new_tbt)
+        msg = (
+            f"\n! Tune separation after adjustment (TbT): "
+            f"nux={new_tbt_nux0:.4f}, nuy={new_tbt_nuy0:.4f}, "
+            f"|nux-nuy|={abs(new_tbt_nux0 - new_tbt_nuy0):.4f}"
         )
+
+        if "actual" in self.twiss:
+            actual_frac_nu = {}
+            for plane in ("x", "y"):
+                actual_frac_nu[plane] = self.twiss["actual"][f"nu{plane}"]
+                actual_frac_nu[plane] -= np.floor(actual_frac_nu[plane])
+                if self.tune_above_half["actual"][plane]:
+                    actual_frac_nu[plane] = 1 - actual_frac_nu[plane]
+            msg += (
+                f" [model Twiss: nux={actual_frac_nu['x']:.4f}, "
+                f"nuy={actual_frac_nu['y']:.4f}, "
+                f"|nux-nuy|={abs(actual_frac_nu['x'] - actual_frac_nu['y']):.4f}]"
+            )
+
+        print(msg)
+        return new_tbt
 
     def observe(self):
         if "design" not in self.tbt_avg_nu:
             self.calc_design_lin_comp()
 
         self.update_actual_twiss()
-        self.separate_tunes_if_needed()
-        self.calc_actual_lin_comp()
+        tbt = self.calc_actual_tbt()
+        tbt = self.separate_tunes_if_needed(tbt=tbt)
+        self.calc_actual_lin_comp(tbt=tbt)
 
         hist = self._actual_design_diff_history
 
