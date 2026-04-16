@@ -2833,7 +2833,7 @@ class PageLTE(PageStandard):
         #
         if not input_LTE_Path.exists():
             if alter_elements:
-                pe.eleutil.save_lattice_after_alter_elements(
+                adjust_input_LTE_kickmap_filepaths(
                     orig_LTE_filepath, input_LTE_filepath, alter_elements
                 )
             else:
