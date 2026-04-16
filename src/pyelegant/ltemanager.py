@@ -2181,6 +2181,8 @@ class NSLS2CB(AbstractFacility):
             "20260210_3dw",
             "20260212_3dw",
             "20260212_bare",
+            "20260304_17ids",  # same as "20260210_3dw" except for having SQ3H skew quads
+            "20260304_17ids_no_CB",  # same as "20260304_17ids" except for no CB replacement
             "day1_bare",
             "day1_3dw",
         )
@@ -2244,7 +2246,7 @@ class NSLS2CB(AbstractFacility):
 
         LTE = self.LTE
         inds = LTE.get_elem_inds_from_regex(r"^B[12]\w+$")
-        if self.lat_type in ("day1_bare", "day1_3dw"):
+        if self.lat_type in ("day1_bare", "day1_3dw", "20260304_17ids_no_CB"):
             assert len(inds) == 30 * 2
         else:
             assert (
@@ -2264,13 +2266,14 @@ class NSLS2CB(AbstractFacility):
             "20260210_3dw",
             "20260212_3dw",
             "20260212_bare",
+            "20260304_17ids",
         )
 
         if self.lat_type in ("20251120_bare_CB", "20260107_bare_CB_highG"):
             inds = LTE.get_elem_inds_from_regex(r"^CB[12]_[1-3]_\d+$")
             assert len(inds) == 3 * 7 * 2  # 3 poles x 7 modules x 2 bends
             return inds
-        elif self.lat_type in ("20260210_3dw",):
+        elif self.lat_type in ("20260210_3dw", "20260304_17ids"):
             inds_d = {}
             inds_d["CB_CB1"] = LTE.get_elem_inds_from_regex(r"^CB1_")
             assert len(inds_d["CB_CB1"]) == 4 * 2  # 4 poles x 2 bends
@@ -2331,7 +2334,13 @@ class NSLS2CB(AbstractFacility):
         if self.lat_type in ("20260107_bare_CB_highG", "20260212_bare", "day1_bare"):
             # For this LTE, the skew quad elements are NOT split into half.
             assert len(skew_quad_names) == 30
-        elif self.lat_type in ("20260210_3dw", "20260212_3dw", "day1_3dw"):
+        elif self.lat_type in (
+            "20260210_3dw",
+            "20260212_3dw",
+            "day1_3dw",
+            "20260304_17ids",
+            "20260304_17ids_no_CB",
+        ):
             # For this LTE, the skew quad elements ARE split into half.
             assert len(skew_quad_names) == 60
         else:
@@ -2378,13 +2387,21 @@ class NSLS2CB(AbstractFacility):
                 normal=normal_quad_names, skew=lumped_skew_quad_names, skew_lumped=True
             )
 
+    def get_sq3h_elem_inds(self):
+        """Get element indexes for SQ3H* skew quads."""
+        assert self.lat_type in ("20260304_17ids", "20260304_17ids_no_CB")
+        LTE = self.LTE
+        inds = LTE.get_elem_inds_from_regex(r"^SQ3H\w+$")
+        assert len(inds) == 30  # 15 physical elements × 2 halves
+        return inds
+
     def get_sext_elem_inds(self):
         """Get the element indexes for sextupoles"""
 
         LTE = self.LTE
 
         inds = LTE.get_elem_inds_from_regex(r"^S[HLM]\w+$")
-        if self.lat_type in ("day1_bare", "day1_3dw"):
+        if self.lat_type in ("day1_bare", "day1_3dw", "20260304_17ids_no_CB"):
             assert len(inds) == 270
         else:
             assert len(inds) == 270 - 6  # 6 sextupoles have been renamed to "CBSH*"

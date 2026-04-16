@@ -3074,7 +3074,7 @@ class NSLS2CB(AbstractFacility):
         elem_inds["BPM"] = _inds["x"]
 
         elem_inds["BEND"] = fsdb.get_bend_elem_inds()
-        if self.lattice_type in ("day1_bare", "day1_3dw"):
+        if self.lattice_type in ("day1_bare", "day1_3dw", "20260304_17ids_no_CB"):
             assert len(elem_inds["BEND"]) == 60
         else:
             assert (
@@ -3084,7 +3084,12 @@ class NSLS2CB(AbstractFacility):
         if fsdb.lat_type in ("20251120_bare_CB", "20260107_bare_CB_highG"):
             elem_inds["COMPLEX_BEND"] = fsdb.get_complex_bend_elem_inds()
             assert len(elem_inds["COMPLEX_BEND"]) == 3 * 7 * 2
-        elif fsdb.lat_type in ("20260210_3dw", "20260212_3dw", "20260212_bare"):
+        elif fsdb.lat_type in (
+            "20260210_3dw",
+            "20260212_3dw",
+            "20260212_bare",
+            "20260304_17ids",
+        ):
             _d = fsdb.get_complex_bend_elem_inds()
             elem_inds["CB_CB1"] = _d["CB_CB1"]
             elem_inds["CB_CB2"] = _d["CB_CB2"]
@@ -3094,7 +3099,7 @@ class NSLS2CB(AbstractFacility):
             assert (
                 len(elem_inds["CB_B"]) == (3 + 2 * 3 + 3) * 2
             )  # 12 (= 3 + 2+2+2 + 3) poles x 2 bends
-        elif fsdb.lat_type in ("day1_bare", "day1_3dw"):
+        elif fsdb.lat_type in ("day1_bare", "day1_3dw", "20260304_17ids_no_CB"):
             pass
         else:
             raise NotImplementedError
@@ -3107,6 +3112,8 @@ class NSLS2CB(AbstractFacility):
             "20260212_bare",
             "day1_bare",
             "day1_3dw",
+            "20260304_17ids",
+            "20260304_17ids_no_CB",
         ):
             elem_inds["QUAD"] = np.sort(
                 np.hstack(
@@ -3282,7 +3289,12 @@ class NSLS2CB(AbstractFacility):
 
     def register_complex_bends(self):
         """Register complex bends (CSBEND) with multipole errors."""
-        if self.fsdb.lat_type in ("20260210_3dw", "20260212_3dw", "20260212_bare"):
+        if self.fsdb.lat_type in (
+            "20260210_3dw",
+            "20260212_3dw",
+            "20260212_bare",
+            "20260304_17ids",
+        ):
             # Handle different complex bend types
             for mag_type in ["CB_CB1", "CB_CB2", "CB_B"]:
                 spec = self._create_magnet_error_spec(
@@ -3291,7 +3303,7 @@ class NSLS2CB(AbstractFacility):
                     main_normal=True,
                 )
                 self.err.register_magnets(self.elem_inds[mag_type], err_spec=spec)
-        elif self.fsdb.lat_type in ("day1_bare", "day1_3dw"):
+        elif self.fsdb.lat_type in ("day1_bare", "day1_3dw", "20260304_17ids_no_CB"):
             pass
         else:
             raise NotImplementedError(
