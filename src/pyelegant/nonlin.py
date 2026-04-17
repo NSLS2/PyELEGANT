@@ -63,7 +63,7 @@ def calc_cmap_xy(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """"""
 
@@ -116,7 +116,7 @@ def calc_cmap_px(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """"""
 
@@ -174,7 +174,7 @@ def _calc_cmap(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """"""
 
@@ -687,7 +687,7 @@ def calc_fma_xy(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """"""
 
@@ -742,7 +742,7 @@ def calc_fma_px(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """"""
 
@@ -802,7 +802,7 @@ def _calc_fma(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """
     If "err_log_check" is None, then "nMaxRemoteRetry" is irrelevant.
@@ -1367,7 +1367,7 @@ def calc_find_aper_nlines(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """"""
 
@@ -1837,7 +1837,7 @@ def calc_mom_aper(
     run_local=False,
     remote_opts=None,
     err_log_check=None,
-    nMaxRemoteRetry=2,
+    nMaxRemoteRetry=3,
 ):
     """"""
 
