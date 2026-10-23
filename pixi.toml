@@ -1,4 +1,5 @@
 [project]
+requires-pixi = ">=0.82.1"
 name = "pyelegant"
 version = "0.15.2"
 description = "Python Interface to the 6D Accelerator Program ELEGANT (ELEctron Generation ANd Tracking)"
